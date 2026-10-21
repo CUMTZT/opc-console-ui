@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-21",
+  "version": "1.1.0",
+  "dataSemantics": "latest-state",
+  "validation": {
+    "goVetBothProjects": true,
+    "goRaceFullSuites": true,
+    "targetedRaceAfterFinalCacheAndTraceChanges": true,
+    "frontendFormatTypecheckBuild": true,
+    "browserMockTestsPassed": 19,
+    "browserLiveTestsPassed": 2,
+    "goKafkaIntegrationTestsPassed": 2,
+    "windowsRuntimeTested": false,
+    "crossMachineReadbackIsolation": true
+  },
+  "browserKafkaDelta": {
+    "code": "1:4000765432",
+    "offset": 8,
+    "partition": 0,
+    "quality": 0,
+    "snapshot": false,
+    "topic": "opc_ui_fixes_1792552471995371262",
+    "value": "65.75"
+  },
+  "launcher": {
+    "preflight": true,
+    "allServicesStarted": true,
+    "gracefulExitCode": 0,
+    "allPortsReleased": true
+  },
+  "artifacts": {
+    "opc-server-go/dist/linux-amd64/opc-server-go": {
+      "sha256": "001e3f34bc759463787ff5ac539722156ea5315f0c190ae825dbd7820e83c2e4"
+    },
+    "opc-server-go/dist/windows-amd64/opc-server-go.exe": {
+      "sha256": "f7652b99f64ecb3880c726461be4763b14ade2fb994b78f96d089ffecdc4febd"
+    },
+    "opc-gateway-go/build/go/opc-gateway": {
+      "sha256": "1d4a4676e297b17df44ac5f2f41b04e7195ff6cbffd461f1a9cc983d5ae6d5b9"
+    },
+    "opc-gateway-go/build/go/opc-gateway.exe": {
+      "sha256": "2a785e8b9b53fb51ae5123f77b42cd89855b54090be8651048f073fb4eeb7a0d"
+    }
+  },
+  "sourceDigests": {
+    "opc-server-go": "b8d62c85da4822c4e57e823526588c1d635c85afc2f07a470c69620743daa27f",
+    "opc-gateway-go": "95c91f5b1205a15e75bfa683cadcc3ad9a89d3acff4b3a3f8f8b7ffe4e5c894f",
+    "opc-console-ui": "da33b78e1b84b39f7096cc9f72e4a44b8298345e9c4b31061f4eece78ddfa337"
+  },
+  "cleanup": {
+    "simulatorNodesRestored": 345,
+    "stoppedTemporaryServices": true,
+    "userServicesLeftRunning": true
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "version": "1.1.0",
+  "dataSemantics": "latest-state",
+  "apiVersion": "1",
+  "requires": {
+    "opc-server": {
+      "apiVersion": "1",
+      "minimumVersion": "1.1.0"
+    },
+    "opc-gateway": {
+      "apiVersion": "1",
+      "minimumVersion": "1.1.0",
+      "capabilities": ["directReadback", "rediscover", "configurationHistory"],
+      "monitorSource": "cache"
+    }
+  }
+}
