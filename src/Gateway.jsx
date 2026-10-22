@@ -4,6 +4,7 @@ import GatewayNodes from './features/gateway-nodes/GatewayNodes.jsx';
 import { useGatewayNodes } from './features/gateway-nodes/useGatewayNodes.js';
 import { useEffect, useRef, useState } from 'react';
 import Configuration from './Configuration.jsx';
+import Icon from './components/Icon.jsx';
 import {
   Alert,
   Badge,
@@ -54,7 +55,16 @@ function DeliveryChart({ samples }) {
     <section className="panel">
       <div className="panel-heading">
         <h2>投递趋势</h2>
-        <span className="subtle">最近 30 次采样 · 每次采样的批次数</span>
+        <div className="chart-legend">
+          <span>
+            <i />
+            成功
+          </span>
+          <span>
+            <i className="failed" />
+            失败
+          </span>
+        </div>
       </div>
       <div className="panel-content">
         {samples.length ? (
@@ -65,6 +75,14 @@ function DeliveryChart({ samples }) {
               role="img"
               aria-label="Kafka 成功与失败投递趋势"
             >
+              {[12, 82, 152].map((y) => (
+                <path
+                  key={y}
+                  d={`M0,${y}H760`}
+                  stroke="#e6edf3"
+                  strokeWidth="1"
+                />
+              ))}
               <path d={`${path('ok')} L760,152 L0,152 Z`} fill="#e4f6ee" />
               <path
                 d={path('ok')}
@@ -88,7 +106,7 @@ function DeliveryChart({ samples }) {
         ) : (
           <p className="empty">正在采样，首组数据将在下一次状态刷新后显示。</p>
         )}
-        <p>趋势仅保留当前页面会话中的计数差值，不代表持久化历史。</p>
+        <p>最近 30 次采样 · 当前会话的批次数变化</p>
       </div>
     </section>
   );
@@ -382,6 +400,7 @@ export default function Gateway({
       setSaving(false);
     }
   }
+  if (!active) return null;
   const k = status?.kafka || {},
     connection = status?.kafkaConnection || {},
     online = machines.filter((m) => m.connected).length;
@@ -413,13 +432,14 @@ export default function Gateway({
               : status?.readOnly
                 ? '设备只读'
                 : status
-                  ? '管理模式'
+                  ? '读写模式'
                   : '未连接'}
           </Badge>
           <button
             className="button"
             onClick={ready ? refreshStatus : refreshConnection}
           >
+            <Icon name="refresh" size={14} />
             刷新状态
           </button>
         </div>
@@ -437,11 +457,13 @@ export default function Gateway({
         <>
           <section className="metrics">
             <Metric
+              icon="network"
               label="在线 OPC UA 机组"
               value={status ? `${online} / ${machines.length}` : '—'}
               hint="以运行中的连接为准"
             />
             <Metric
+              icon="database"
               label="发现节点数"
               value={
                 status
@@ -451,11 +473,15 @@ export default function Gateway({
               hint="所有采集机组"
             />
             <Metric
+              icon="send"
+              kind="good"
               label="成功投递批次"
               value={status ? number(k.successfulBatches) : '—'}
               hint={`${number(k.failedBatches)} 失败批次`}
             />
             <Metric
+              icon="activity"
+              kind={k.unknownBatches ? 'warn' : ''}
               label="在途消息"
               value={status ? number(k.queuedMessages) : '—'}
               hint={`${number(k.unknownBatches)} 批次结果未知`}
@@ -465,7 +491,10 @@ export default function Gateway({
             <DeliveryChart samples={history} />
             <section className="panel">
               <div className="panel-heading">
-                <h2>数据链路</h2>
+                <h2>
+                  <Icon name="network" size={17} />
+                  数据链路
+                </h2>
                 <Badge
                   kind={connection.state === 'connected' ? 'good' : 'warn'}
                 >
@@ -503,7 +532,10 @@ export default function Gateway({
           </div>
           <section className="panel">
             <div className="panel-heading">
-              <h2>采集机组</h2>
+              <h2>
+                <Icon name="server" size={17} />
+                采集机组
+              </h2>
               <small>最近刷新 {time(status?.serverTime)}</small>
             </div>
             <div className="table-scroll">
@@ -576,6 +608,7 @@ export default function Gateway({
       {['connections', 'settings'].includes(page) && view && (
         <form
           ref={form}
+          className="gateway-config-form"
           onSubmit={(e) => {
             e.preventDefault();
             configurationAction('apply');
@@ -589,6 +622,13 @@ export default function Gateway({
                 : '配置已同步'}{' '}
             · {view.file} · TOML
           </Alert>
+          <Configuration
+            config={config}
+            setConfig={setConfig}
+            page={page}
+            disabled={saving}
+            fieldError={fieldError}
+          />
           <ConfigReview
             draft={config}
             baseline={view.config}
@@ -605,13 +645,6 @@ export default function Gateway({
               )
             }
             busy={saving}
-          />
-          <Configuration
-            config={config}
-            setConfig={setConfig}
-            page={page}
-            disabled={saving}
-            fieldError={fieldError}
           />
           <Alert kind={result?.kind}>{result?.text}</Alert>
           <div className="config-actions">

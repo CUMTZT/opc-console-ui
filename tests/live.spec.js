@@ -33,7 +33,7 @@ test('external React console works with real Go APIs through its proxy', async (
     await expect(
       page.getByText(name + '-已编辑', { exact: true }),
     ).toBeVisible();
-    await page.getByRole('link', { name: '配置', exact: true }).click();
+    await page.getByRole('link', { name: '模拟配置', exact: true }).click();
     const editor = page.getByRole('form', { name: '模拟服务配置' });
     await expect(
       editor.getByLabel('刷新间隔（毫秒）', { exact: true }),
@@ -43,7 +43,10 @@ test('external React console works with real Go APIs through its proxy', async (
       path: 'test-results/server-desktop.png',
       fullPage: false,
     });
-    await page.getByRole('link', { name: '运行总览', exact: true }).click();
+    await page
+      .getByRole('region', { name: '采集网关', exact: true })
+      .getByRole('link', { name: '运行总览', exact: true })
+      .click();
     await expect(
       page.getByRole('dialog', { name: '连接采集网关' }),
     ).toHaveCount(0);

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openGateway, mockAPIs } from './fixtures.js';
+import { openGateway, mockAPIs, navigateTo } from './fixtures.js';
 
 test('server filtering, escaped names, CSV export and node CRUD preserve string values', async ({
   page,
@@ -66,7 +66,7 @@ test('simulation profiles and ordered rules save through the server API', async 
 }) => {
   const state = await mockAPIs(page);
   await page.goto('/#server/monitor');
-  await page.getByRole('link', { name: '配置', exact: true }).click();
+  await page.getByRole('link', { name: '模拟配置', exact: true }).click();
   const dialog = page.getByRole('form', { name: '模拟服务配置' });
   await dialog.getByLabel('刷新间隔（毫秒）', { exact: true }).fill('200');
   await dialog.getByRole('tab', { name: '业务规则', exact: true }).click();
@@ -176,7 +176,10 @@ test('gateway failures preserve configuration drafts and recover without a login
       body: JSON.stringify({ code: 503, message: 'temporary gateway failure' }),
     }),
   );
-  await page.getByRole('link', { name: '运行总览', exact: true }).click();
+  await page
+    .getByRole('region', { name: '采集网关', exact: true })
+    .getByRole('link', { name: '运行总览', exact: true })
+    .click();
   await page.getByRole('button', { name: '刷新状态', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText(
     'temporary gateway failure',
@@ -188,7 +191,10 @@ test('gateway failures preserve configuration drafts and recover without a login
     page.getByLabel('Bootstrap Servers', { exact: true }),
   ).toHaveValue('localhost:19094');
   await page.unroute('**/api/gateway/status');
-  await page.getByRole('link', { name: '运行总览', exact: true }).click();
+  await page
+    .getByRole('region', { name: '采集网关', exact: true })
+    .getByRole('link', { name: '运行总览', exact: true })
+    .click();
   await page.getByRole('button', { name: '刷新状态', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByText('machine-1', { exact: true })).toBeVisible();
@@ -206,10 +212,10 @@ test('mobile layout fits the viewport and both service modules remain reachable'
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByRole('link', { name: '运行总览', exact: true }).click();
+  await navigateTo(page, '运行总览', '采集网关');
   await expect(page.getByText('machine-1', { exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByRole('link', { name: '系统总览', exact: true }).click();
+  await navigateTo(page, '系统总览');
   await expect(
     page.getByRole('heading', { name: '系统总览', exact: true }),
   ).toBeVisible();

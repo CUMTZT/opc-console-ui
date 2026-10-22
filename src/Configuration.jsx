@@ -1,4 +1,5 @@
 import { Field } from './shared.jsx';
+import Icon from './components/Icon.jsx';
 
 const durations = [
   ['reconnect_interval', '重连间隔'],
@@ -116,7 +117,10 @@ export default function Configuration({
         <>
           <section className="panel">
             <div className="config-section">
-              <h2>Kafka 连接</h2>
+              <h2>
+                <Icon name="send" size={17} />
+                Kafka 连接
+              </h2>
               <p>
                 所有采集机组共用的发布器。地址为 Go 网关能够访问的 Broker 地址。
               </p>
@@ -185,7 +189,10 @@ export default function Configuration({
         <>
           <section className="panel">
             <div className="config-section">
-              <h2>基本设置</h2>
+              <h2>
+                <Icon name="settings" size={17} />
+                基本设置
+              </h2>
               <p>
                 HTTP
                 监听地址和端口需要编辑服务端配置文件并重启。日志设置由服务器保留。
@@ -202,7 +209,10 @@ export default function Configuration({
               </div>
             </div>
             <div className="config-section">
-              <h2>采集与缓冲</h2>
+              <h2>
+                <Icon name="database" size={17} />
+                采集与缓冲
+              </h2>
               <p>时长使用 100ms、1s 等格式；最终范围由后端校验。</p>
               <div className="fields-grid">
                 {durations.map(([key, label]) => field('opc.' + key, label))}
@@ -214,7 +224,10 @@ export default function Configuration({
           </section>
           <section className="panel">
             <div className="config-section">
-              <h2>OPC UA 安全设置</h2>
+              <h2>
+                <Icon name="settings" size={17} />
+                OPC UA 安全设置
+              </h2>
               <p>证书路径均指 Go 网关所在机器上的文件。</p>
               <div className="fields-grid">
                 {field('opc.security.policy', '安全策略', {

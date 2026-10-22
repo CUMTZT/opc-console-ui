@@ -17,7 +17,19 @@ export default defineConfig(({ mode }) => {
   );
   return {
     plugins: [react()],
-    server: { host: '127.0.0.1', port: 5173, strictPort: true, proxy },
+    server: {
+      host: '127.0.0.1',
+      port: 5173,
+      strictPort: true,
+      proxy,
+      // Windows drives mounted in WSL can miss native file change events.
+      watch: {
+        usePolling:
+          process.platform === 'linux' &&
+          /^\/mnt\/[a-z]\//i.test(process.cwd()),
+        interval: 300,
+      },
+    },
     preview: { host: '127.0.0.1', port: 4173, strictPort: true, proxy },
   };
 });

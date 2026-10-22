@@ -1,4 +1,5 @@
 import { Badge, time } from '../../shared.jsx';
+import Icon from '../../components/Icon.jsx';
 const stages = {
   connecting: '正在连接',
   browsing: '发现节点',
@@ -13,7 +14,10 @@ export default function Diagnostics({ machines }) {
   return (
     <section className="panel">
       <div className="panel-heading">
-        <h2>运行诊断</h2>
+        <h2>
+          <Icon name="activity" size={17} />
+          运行诊断
+        </h2>
         <small>采集、缓冲和投递状态分别展示</small>
       </div>
       <div className="panel-content">

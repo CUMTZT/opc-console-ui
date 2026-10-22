@@ -82,6 +82,7 @@ test('history restores only an editable draft and preserves the running configur
     .getByLabel('Bootstrap Servers', { exact: true })
     .fill('localhost:19098');
   await page.getByRole('button', { name: '仅保存', exact: true }).click();
+  await page.getByText('配置差异与历史版本', { exact: true }).click();
   await expect(page.getByRole('button', { name: /载入草稿/ })).toBeVisible();
   await page.getByRole('button', { name: /载入草稿/ }).click();
   await expect(
@@ -96,7 +97,7 @@ test('simulation import validates a draft and does not apply it until saved', as
 }) => {
   const state = await mockAPIs(page);
   await page.goto('/#server/monitor');
-  await page.getByRole('link', { name: '配置', exact: true }).click();
+  await page.getByRole('link', { name: '模拟配置', exact: true }).click();
   const dialog = page.getByRole('form', { name: '模拟服务配置' });
   await dialog.getByLabel('导入模拟方案文件').setInputFiles({
     name: 'invalid.json',
@@ -136,7 +137,7 @@ test('large node catalogs are paged and simulation updates preserve other profil
   await page.goto('/#server/monitor');
   await expect(page.getByText('测点 1', { exact: true })).toBeVisible();
   expect(await page.getByRole('row').count()).toBeLessThanOrEqual(101);
-  await page.getByRole('link', { name: '配置', exact: true }).click();
+  await page.getByRole('link', { name: '模拟配置', exact: true }).click();
   const dialog = page.getByRole('form', { name: '模拟服务配置' });
   await expect(dialog.getByRole('row')).toHaveCount(51);
   await dialog.getByLabel('筛选模拟节点', { exact: true }).fill('1000');
@@ -229,7 +230,7 @@ test('simulation runtime trace refresh does not replace an unsaved draft', async
     }),
   );
   await page.goto('/#server/monitor');
-  await page.getByRole('link', { name: '配置', exact: true }).click();
+  await page.getByRole('link', { name: '模拟配置', exact: true }).click();
   const dialog = page.getByRole('form', { name: '模拟服务配置' });
   await dialog.getByRole('tab', { name: '业务规则', exact: true }).click();
   await dialog.getByLabel('规则名称', { exact: true }).fill('未保存修改');

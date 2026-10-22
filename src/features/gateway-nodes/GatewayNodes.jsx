@@ -1,4 +1,5 @@
 import { Alert, Badge, Field, Modal, time } from '../../shared.jsx';
+import Icon from '../../components/Icon.jsx';
 
 export default function GatewayNodes({
   state,
@@ -18,7 +19,10 @@ export default function GatewayNodes({
     <>
       <section className="panel">
         <div className="panel-heading">
-          <h2>实时设备节点</h2>
+          <h2>
+            <Icon name="database" size={17} />
+            实时设备节点
+          </h2>
           <small>自动刷新订阅缓存 · 设备直读单独执行</small>
         </div>
         <div className="toolbar">
@@ -36,13 +40,16 @@ export default function GatewayNodes({
               <option key={m.code}>{m.code}</option>
             ))}
           </select>
-          <input
-            type="search"
-            aria-label="搜索设备节点"
-            value={s.search}
-            onChange={(e) => s.setSearch(e.target.value)}
-            placeholder="搜索节点 ID 或名称"
-          />
+          <div className="search-field">
+            <Icon name="search" size={16} />
+            <input
+              type="search"
+              aria-label="搜索设备节点"
+              value={s.search}
+              onChange={(e) => s.setSearch(e.target.value)}
+              placeholder="搜索节点 ID 或名称"
+            />
+          </div>
           <label className="check">
             <input
               type="checkbox"
@@ -56,6 +63,7 @@ export default function GatewayNodes({
             disabled={!machine || s.busy}
             onClick={s.refreshCache}
           >
+            <Icon name="refresh" size={13} />
             刷新节点
           </button>
           <button
@@ -73,7 +81,7 @@ export default function GatewayNodes({
             重新发现节点
           </button>
         </div>
-        <div className="panel-content">
+        <div className="node-context">
           <Alert>{s.error}</Alert>
           {readOnly && (
             <Alert kind="info">当前网关为设备只读模式，禁止写入。</Alert>
@@ -116,7 +124,12 @@ export default function GatewayNodes({
             </Alert>
           )}
         </div>
-        <div className="table-scroll">
+        <div
+          className="table-scroll data-table-scroll"
+          tabIndex={0}
+          role="region"
+          aria-label="采集设备节点数据表"
+        >
           <table>
             <thead>
               <tr>

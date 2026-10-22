@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockAPIs } from './fixtures.js';
+import { mockAPIs, navigateTo } from './fixtures.js';
 
 test('grouped navigation separates simulator pages and preserves the configuration draft', async ({
   page,
@@ -16,18 +16,20 @@ test('grouped navigation separates simulator pages and preserves the configurati
     nav.getByRole('link', { name: '系统总览', exact: true }),
   ).toHaveAttribute('aria-current', 'page');
   await expect(simulator.getByRole('link')).toHaveText([
-    '总览',
-    '配置',
+    '运行总览',
+    '模拟配置',
     '数据监控',
+    '运行日志',
   ]);
   await expect(gateway.getByRole('link')).toHaveText([
     '运行总览',
     '节点监控',
     '连接配置',
     '网关设置',
+    '运行日志',
   ]);
 
-  await simulator.getByRole('link', { name: '总览', exact: true }).click();
+  await simulator.getByRole('link', { name: '运行总览', exact: true }).click();
   await expect(page).toHaveURL(/#server\/overview$/);
   await expect(
     page.getByRole('heading', { name: '模拟服务总览', exact: true }),
@@ -54,7 +56,7 @@ test('grouped navigation separates simulator pages and preserves the configurati
   ).toBeVisible();
   await page.getByLabel('搜索节点名称或 NodeId').fill('出口温度');
   await nav.getByRole('link', { name: '系统总览', exact: true }).click();
-  await simulator.getByRole('link', { name: '配置', exact: true }).click();
+  await simulator.getByRole('link', { name: '模拟配置', exact: true }).click();
   await expect(
     editor.getByLabel('刷新间隔（毫秒）', { exact: true }),
   ).toHaveValue('200');
@@ -105,15 +107,15 @@ test('grouped navigation and all simulator pages fit a mobile viewport', async (
     .getByRole('navigation', { name: '主导航' })
     .getByRole('region', { name: '模拟服务', exact: true });
   for (const [link, title] of [
-    ['总览', '模拟服务总览'],
-    ['配置', '配置'],
+    ['运行总览', '模拟服务总览'],
+    ['模拟配置', '配置'],
     ['数据监控', '数据监控'],
   ]) {
-    await simulator.getByRole('link', { name: link, exact: true }).click();
+    await navigateTo(page, link, '模拟服务');
     await expect(
       page.getByRole('heading', { name: title, level: 1, exact: true }),
     ).toBeVisible();
-    if (link === '配置')
+    if (link === '模拟配置')
       await expect(
         page.getByLabel('刷新间隔（毫秒）', { exact: true }),
       ).toBeVisible();

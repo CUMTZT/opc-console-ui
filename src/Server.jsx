@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Simulation from './Simulation.jsx';
 import ServerOverview from './features/server-overview/ServerOverview.jsx';
+import Icon from './components/Icon.jsx';
 import {
   Alert,
   Badge,
@@ -402,6 +403,7 @@ export default function Server({ active, page, navigate }) {
               {error ? '连接异常' : snapshot ? '已连接' : '正在连接'}
             </Badge>
             <button className="button" disabled={busy} onClick={refresh}>
+              <Icon name="refresh" size={14} />
               立即刷新
             </button>
             {page === 'monitor' && (
@@ -411,6 +413,7 @@ export default function Server({ active, page, navigate }) {
                   disabled={!snapshot}
                   onClick={exportCSV}
                 >
+                  <Icon name="download" size={14} />
                   导出 CSV
                 </button>
                 <button
@@ -418,6 +421,7 @@ export default function Server({ active, page, navigate }) {
                   disabled={!snapshot || busy}
                   onClick={() => openEditor(null)}
                 >
+                  <Icon name="plus" size={15} />
                   新增节点
                 </button>
               </>
@@ -435,13 +439,18 @@ export default function Server({ active, page, navigate }) {
         </Alert>
       )}
       {page !== 'configuration' && (
-        <section className="metrics">
+        <section
+          className={`metrics ${page === 'monitor' ? 'compact-metrics' : ''}`}
+        >
           <Metric
+            icon="database"
             label="节点总数"
             value={snapshot ? number(nodes.length) : '—'}
             hint="全部已注册变量"
           />
           <Metric
+            icon="check"
+            kind={snapshot && good === nodes.length ? 'good' : ''}
             label="质量正常"
             value={snapshot ? number(good) : '—'}
             hint={
@@ -451,11 +460,13 @@ export default function Server({ active, page, navigate }) {
             }
           />
           <Metric
+            icon="activity"
             label="发生变化的节点"
             value={number(changed.current.size)}
             hint="本次浏览期间累计，重启后重置"
           />
           <Metric
+            icon="clock"
             label="服务运行时间"
             value={
               snapshot
@@ -483,18 +494,21 @@ export default function Server({ active, page, navigate }) {
             <h2>
               实时节点数据 <Badge>{filtered.length}</Badge>
             </h2>
-            <span className="subtle">
+            <span className={`sync-state ${paused ? 'is-paused' : ''}`}>
               {paused ? '已暂停' : '每 1 秒自动刷新'}
             </span>
           </div>
           <div className="toolbar">
-            <input
-              type="search"
-              aria-label="搜索节点名称或 NodeId"
-              placeholder="搜索节点名称或 NodeId…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <div className="search-field">
+              <Icon name="search" size={16} />
+              <input
+                type="search"
+                aria-label="搜索节点名称或 NodeId"
+                placeholder="搜索节点名称或 NodeId…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
             <div className="actions">
               <select
                 aria-label="按质量筛选"
@@ -510,6 +524,7 @@ export default function Server({ active, page, navigate }) {
                 className="button"
                 onClick={() => setPaused((value) => !value)}
               >
+                <Icon name={paused ? 'play' : 'pause'} size={13} />
                 {paused ? '继续刷新' : '暂停刷新'}
               </button>
             </div>
@@ -523,14 +538,22 @@ export default function Server({ active, page, navigate }) {
                 onClick={() => setType(value)}
               >
                 {value === 'all' ? '全部节点' : value}{' '}
-                {
-                  nodes.filter((node) => value === 'all' || node.type === value)
-                    .length
-                }
+                <span className="filter-count">
+                  {
+                    nodes.filter(
+                      (node) => value === 'all' || node.type === value,
+                    ).length
+                  }
+                </span>
               </button>
             ))}
           </div>
-          <div className="table-scroll">
+          <div
+            className="table-scroll data-table-scroll"
+            tabIndex={0}
+            role="region"
+            aria-label="模拟节点数据表"
+          >
             <table>
               <thead>
                 <tr>
@@ -571,7 +594,7 @@ export default function Server({ active, page, navigate }) {
                     </td>
                     <td className="mono">{time(node.sourceTimestamp)}</td>
                     <td>
-                      <div className="actions">
+                      <div className="actions row-actions">
                         <button
                           className="button small"
                           onClick={() => setDetail(node.id)}
@@ -586,7 +609,7 @@ export default function Server({ active, page, navigate }) {
                           编辑
                         </button>
                         <button
-                          className="button small"
+                          className="button small text-danger"
                           disabled={busy}
                           onClick={() => setDeleting(node)}
                         >

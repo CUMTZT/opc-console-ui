@@ -1,4 +1,5 @@
 import { cloneElement, useEffect, useId, useRef, useState } from 'react';
+import Icon from './components/Icon.jsx';
 
 export { request } from './api/client.js';
 
@@ -79,7 +80,13 @@ export function Alert({ children, kind = 'danger' }) {
       className={`alert ${kind}`}
       role={kind === 'danger' ? 'alert' : 'status'}
     >
-      {children}
+      <Icon
+        name={
+          kind === 'danger' ? 'alert' : kind === 'success' ? 'check' : 'info'
+        }
+        size={17}
+      />
+      <div className="alert-content">{children}</div>
     </div>
   ) : null;
 }
@@ -134,10 +141,17 @@ export function Field({ label, children, hint }) {
     </div>
   );
 }
-export function Metric({ label, value, hint }) {
+export function Metric({ label, value, hint, icon, kind = '' }) {
   return (
-    <article className="metric">
-      <span>{label}</span>
+    <article className={`metric ${kind ? `metric-${kind}` : ''}`}>
+      <div className="metric-heading">
+        <span>{label}</span>
+        {icon && (
+          <span className="metric-icon">
+            <Icon name={icon} size={19} />
+          </span>
+        )}
+      </div>
       <strong>{value}</strong>
       <small>{hint}</small>
     </article>

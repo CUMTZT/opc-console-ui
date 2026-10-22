@@ -1,5 +1,6 @@
 import { parseSimulationConfig } from './api/contracts';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import Icon from './components/Icon.jsx';
 import {
   Alert,
   Field,
@@ -256,9 +257,12 @@ export default function Simulation({ active, onSaved }) {
     event.currentTarget.querySelector(`[data-section="${next}"]`).focus();
   }
   return (
-    <section className="panel">
+    <section className="panel simulation-panel">
       <div className="panel-heading">
-        <h2>动态值与业务模拟</h2>
+        <h2>
+          <Icon name="sliders" size={17} />
+          动态值与业务模拟
+        </h2>
         <span className="subtle">
           {dirty ? '有未保存的修改' : document ? '配置已同步' : '正在加载…'}
         </span>
@@ -269,7 +273,7 @@ export default function Simulation({ active, onSaved }) {
         onSubmit={save}
         noValidate
       >
-        <p>
+        <p className="editor-note">
           {document
             ? `${document.persistent ? '配置保存到状态文件，重启后恢复。' : '当前为内存模式，重启后失效。'} ${document.running ? '模拟正在运行。' : '模拟当前未运行；请检查启动参数与启用设置。'} 保存会重置规则进度，并让启用节点回到基准值。`
             : '正在加载配置…'}
@@ -277,7 +281,7 @@ export default function Simulation({ active, onSaved }) {
         <Alert>{error}</Alert>
         {validation && <Alert kind="info">{validation}</Alert>}
         {runtime && (
-          <p>
+          <p className="editor-sync">
             规则状态同步：{time(runtime.capturedAt)}
             {runtime.revision !== document?.revision
               ? ' · 服务端版本已变化，保存前请重新加载并比较草稿。'
@@ -286,7 +290,7 @@ export default function Simulation({ active, onSaved }) {
         )}
         {draft && (
           <fieldset disabled={busy}>
-            <div className="fields-grid">
+            <div className="fields-grid simulation-basic">
               <label className="check">
                 <input
                   type="checkbox"

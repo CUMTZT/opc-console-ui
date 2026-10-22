@@ -183,3 +183,96 @@ export function parseSimulationConfig(
   }
   return value as unknown as SimulationConfig;
 }
+
+export interface LogEntry {
+  id: number;
+  time: string;
+  level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+  message: string;
+  component: string;
+  machine?: string;
+  requestId?: string;
+  fields: Record<string, string>;
+  truncated?: boolean;
+}
+export interface LogPage {
+  entries: LogEntry[];
+  total: number;
+  offset: number;
+  limit: number;
+  anchor: number;
+  latestId: number;
+  oldestId: number;
+  instanceId: string;
+  capturedAt: string;
+  startedAt: string;
+  retained: number;
+  capacity: number;
+  bytes: number;
+  byteBudget: number;
+  discarded: number;
+  components: string[];
+  machines: string[];
+  levels: Record<string, number>;
+  source: 'memory';
+}
+export function parseLogPage(value: unknown): LogPage {
+  if (
+    !object(value) ||
+    !Array.isArray(value.entries) ||
+    value.entries.length > 200 ||
+    value.source !== 'memory'
+  )
+    throw new Error('日志接口响应格式不正确，请更新配套 Go 服务');
+  for (const key of [
+    'total',
+    'offset',
+    'limit',
+    'anchor',
+    'latestId',
+    'oldestId',
+    'retained',
+    'capacity',
+    'bytes',
+    'byteBudget',
+    'discarded',
+  ]) {
+    if (!Number.isSafeInteger(value[key]) || Number(value[key]) < 0)
+      throw new Error(`日志响应 ${key} 无效`);
+  }
+  for (const key of ['instanceId', 'capturedAt', 'startedAt'])
+    requireType(value[key], 'string', key);
+  for (const key of ['components', 'machines'])
+    if (
+      !Array.isArray(value[key]) ||
+      !value[key].every((item: unknown) => typeof item === 'string')
+    )
+      throw new Error(`日志响应 ${key} 无效`);
+  const levels = value.levels;
+  if (
+    !object(levels) ||
+    !['DEBUG', 'INFO', 'WARN', 'ERROR'].every(
+      (level) =>
+        Number.isSafeInteger(levels[level]) && Number(levels[level]) >= 0,
+    )
+  )
+    throw new Error('日志级别统计无效');
+  for (const entry of value.entries) {
+    if (
+      !object(entry) ||
+      !Number.isSafeInteger(entry.id) ||
+      Number(entry.id) < 1 ||
+      !['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(String(entry.level)) ||
+      !object(entry.fields) ||
+      !Object.values(entry.fields).every((field) => typeof field === 'string')
+    )
+      throw new Error('日志条目响应无效');
+    for (const key of ['time', 'message', 'component'])
+      requireType(entry[key], 'string', key);
+    for (const key of ['machine', 'requestId'])
+      if (entry[key] !== undefined) requireType(entry[key], 'string', key);
+    if (Number.isNaN(Date.parse(entry.time as string)))
+      throw new Error('日志时间无效');
+  }
+  return value as unknown as LogPage;
+}

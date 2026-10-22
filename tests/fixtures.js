@@ -75,6 +75,30 @@ export async function mockAPIs(page, options = {}) {
     directReads: 0,
     valueReads: 0,
   };
+  state.logs = Object.fromEntries(
+    ['server', 'gateway'].map((service) => [
+      service,
+      Array.from({ length: 125 }, (_, index) => ({
+        id: index + 1,
+        time: new Date(Date.now() - (125 - index) * 1000).toISOString(),
+        level: ['INFO', 'WARN', 'ERROR', 'DEBUG'][index % 4],
+        message: `${service} log ${index + 1} ${index % 4 === 1 ? '连接重试' : '运行记录'}`,
+        component: ['http', 'opc', 'kafka'][index % 3],
+        machine: service === 'gateway' ? `machine-${(index % 2) + 1}` : '',
+        requestId: `request-${service}-${index + 1}`,
+        fields: {
+          component: ['http', 'opc', 'kafka'][index % 3],
+          operation: `operation-${index + 1}`,
+          authorization: '[REDACTED]',
+        },
+      })),
+    ]),
+  );
+  state.logInstances = {
+    server: 'server-instance-1',
+    gateway: 'gateway-instance-1',
+  };
+  state.logRequests = [];
   state.runningConfig = structuredClone(state.config);
   state.simulation = {
     revision: 1,
@@ -121,6 +145,72 @@ export async function mockAPIs(page, options = {}) {
         contentType: 'application/json',
         body: JSON.stringify(data),
       });
+    const logService =
+      path === '/api/server/logs'
+        ? 'server'
+        : path === '/api/gateway/logs'
+          ? 'gateway'
+          : '';
+    if (logService) {
+      if (req.headers().authorization)
+        return send({ error: 'unexpected authorization header' }, 400);
+      const filters = Object.fromEntries(url.searchParams);
+      state.logRequests.push({ service: logService, ...filters });
+      const retained = state.logs[logService];
+      const latestId = retained.at(-1)?.id || 0;
+      const anchor = Math.min(Number(filters.anchor) || latestId, latestId);
+      const offset = Number(filters.offset) || 0,
+        limit = Number(filters.limit) || 50;
+      const entries = retained
+        .filter(
+          (entry) =>
+            entry.id <= anchor &&
+            (!filters.level || entry.level === filters.level) &&
+            (!filters.component || entry.component === filters.component) &&
+            (!filters.machine || entry.machine === filters.machine) &&
+            (!filters.from ||
+              Date.parse(entry.time) >= Date.parse(filters.from)) &&
+            (!filters.to || Date.parse(entry.time) <= Date.parse(filters.to)) &&
+            (!filters.q ||
+              JSON.stringify(entry)
+                .toLowerCase()
+                .includes(filters.q.toLowerCase())),
+        )
+        .toReversed();
+      const page = {
+        entries: entries.slice(offset, offset + limit),
+        total: entries.length,
+        offset,
+        limit,
+        anchor,
+        latestId,
+        oldestId: retained[0]?.id || 0,
+        instanceId: state.logInstances[logService],
+        capturedAt: new Date().toISOString(),
+        startedAt: new Date(Date.now() - 60000).toISOString(),
+        retained: retained.length,
+        capacity: 3000,
+        bytes: retained.length * 300,
+        byteBudget: 8388608,
+        discarded: 0,
+        components: [...new Set(retained.map((entry) => entry.component))],
+        machines: [
+          ...new Set(retained.map((entry) => entry.machine).filter(Boolean)),
+        ],
+        levels: Object.fromEntries(
+          ['DEBUG', 'INFO', 'WARN', 'ERROR'].map((level) => [
+            level,
+            retained.filter((entry) => entry.level === level).length,
+          ]),
+        ),
+        source: 'memory',
+      };
+      return send(
+        logService === 'gateway'
+          ? { code: 200, message: 'ok', data: page }
+          : page,
+      );
+    }
     if (path.startsWith('/api/server')) {
       if (path === '/api/server/health')
         return send({
@@ -356,4 +446,23 @@ export async function mockAPIs(page, options = {}) {
 }
 export async function openGateway(page, path = 'overview') {
   await page.goto('/#gateway/' + path);
+}
+
+export async function navigateTo(page, title, group) {
+  const toggle = page.getByRole('button', { name: '展开导航', exact: true });
+  const mobile = await toggle.isVisible();
+  if (
+    (await toggle.isVisible()) &&
+    (await toggle.getAttribute('aria-expanded')) !== 'true'
+  )
+    await toggle.click();
+  const navigation = page.getByRole('navigation', { name: '主导航' });
+  const scope = group
+    ? navigation.getByRole('region', { name: group, exact: true })
+    : navigation;
+  await scope.getByRole('link', { name: title, exact: true }).click();
+  if (mobile)
+    await page
+      .getByRole('navigation', { name: '主导航' })
+      .waitFor({ state: 'hidden' });
 }

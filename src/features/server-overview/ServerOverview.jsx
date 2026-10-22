@@ -1,12 +1,16 @@
 import { Badge, number, time } from '../../shared.jsx';
+import Icon from '../../components/Icon.jsx';
 
 export default function ServerOverview({ snapshot, nodes, navigate }) {
   return (
-    <>
+    <div className="server-overview-grid">
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <h2>服务信息</h2>
+            <h2>
+              <Icon name="cpu" size={17} />
+              服务信息
+            </h2>
             <p>总览每 5 秒同步；数据监控每 1 秒刷新。</p>
           </div>
           <div className="actions">
@@ -46,7 +50,10 @@ export default function ServerOverview({ snapshot, nodes, navigate }) {
       </section>
       <section className="panel">
         <div className="panel-heading">
-          <h2>节点类型分布</h2>
+          <h2>
+            <Icon name="database" size={17} />
+            节点类型分布
+          </h2>
           <Badge>{number(nodes.length)} 个节点</Badge>
         </div>
         <div className="node-distribution panel-content">
@@ -68,6 +75,6 @@ export default function ServerOverview({ snapshot, nodes, navigate }) {
           })}
         </div>
       </section>
-    </>
+    </div>
   );
 }
