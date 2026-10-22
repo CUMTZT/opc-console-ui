@@ -138,7 +138,7 @@ export default function App() {
               <Icon name="network" size={24} />
             </span>
             <span>
-              OPC Console<small>工业数据工作台</small>
+              OPC Studio<small>工业仿真与数采工作台</small>
             </span>
           </a>
           <button
