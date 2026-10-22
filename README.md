@@ -1,6 +1,7 @@
 # OPC Studio · Console (`opc-console-ui`)
 
 **OPC Studio（工业仿真与数采工作台）** 的独立 React 19 + Vite 8 管理控制台，统一管理套件内的另外两个核心工程：
+
 - **OPC Studio · Simulator (`opc-server-go`)**：高保真 OPC UA 设备与有序业务机理模拟服务
 - **OPC Studio · Gateway (`opc-gateway-go`)**：多机组 OPC UA 采集与 Kafka 投递网关
 

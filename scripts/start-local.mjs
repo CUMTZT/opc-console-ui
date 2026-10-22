@@ -1,7 +1,7 @@
 import { spawn, execFile } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { createServer } from 'node:net';
+import { createConnection, createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -144,6 +144,25 @@ function stop(code) {
 }
 process.on('SIGINT', () => stop(0));
 process.on('SIGTERM', () => stop(0));
+async function waitForPort(port, host = '127.0.0.1', timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!stopping && Date.now() < deadline) {
+    const ready = await new Promise((resolve) => {
+      const socket = createConnection({ port, host });
+      socket.once('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once('error', () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
+    if (ready) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
 start(
   serverBinary,
   [
@@ -159,18 +178,21 @@ start(
   ],
   serverRoot,
 );
-start(gatewayBinary, ['--config', configPath], gatewayRoot);
-start(
-  process.execPath,
-  [
-    join(ui, 'node_modules', 'vite', 'bin', 'vite.js'),
-    '--port',
-    String(uiPort),
-  ],
-  ui,
-  {
-    ...process.env,
-    SERVER_API_TARGET: `http://127.0.0.1:${serverHTTP}`,
-    GATEWAY_API_TARGET: `http://${urlHost(gatewayTargetHost)}:${gatewayHTTP}`,
-  },
-);
+await waitForPort(serverPort, '127.0.0.1');
+if (!stopping) {
+  start(gatewayBinary, ['--config', configPath], gatewayRoot);
+  start(
+    process.execPath,
+    [
+      join(ui, 'node_modules', 'vite', 'bin', 'vite.js'),
+      '--port',
+      String(uiPort),
+    ],
+    ui,
+    {
+      ...process.env,
+      SERVER_API_TARGET: `http://127.0.0.1:${serverHTTP}`,
+      GATEWAY_API_TARGET: `http://${urlHost(gatewayTargetHost)}:${gatewayHTTP}`,
+    },
+  );
+}
