@@ -1,6 +1,11 @@
+/**
+ * 自动连接回归：无需令牌、故障后自动恢复。
+ * 在浏览器请求层检查行为，避免只验证按钮文案而漏掉实际鉴权头。
+ */
 import { test, expect } from '@playwright/test';
 import { mockAPIs, openGateway } from './fixtures.js';
 
+// 免令牌连接：页面打开及浏览器重载不要求输入凭据，也不发送 Authorization。
 test('gateway opens and reloads without credentials or authorization headers', async ({
   page,
 }) => {
@@ -24,6 +29,7 @@ test('gateway opens and reloads without credentials or authorization headers', a
     expect(request.headers().authorization).toBeUndefined();
 });
 
+// 初始化恢复：首次不可用之后自动重试并连接，仍无需额外凭据。
 test('gateway bootstrap can recover from an unavailable service without credentials', async ({
   page,
 }) => {

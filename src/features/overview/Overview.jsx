@@ -1,3 +1,8 @@
+/**
+ * 系统总览：自己读取模拟服务 /health，网关摘要则由 Gateway → App → props 传入。
+ * 同一份网关状态供不同区域使用，避免总览再创建一套重复的网关请求和连接判断。
+ * 本页计算展示指标和关注事项，实际 OPC UA 采集与 Kafka 投递均发生在 Go 后端。
+ */
 import { useState } from 'react';
 import Icon from '../../components/Icon.jsx';
 import {
@@ -12,10 +17,16 @@ import {
   useVisible,
 } from '../../shared.jsx';
 
+/**
+ * active：当前导航是否是系统总览；gateway：父级共享的网关摘要，可带 stale/error 标记。
+ * server 是模拟服务健康响应，error 是该健康请求的失败说明；二者与网关错误分开。
+ * 下方 online/ready/allHealthy/attention 都是从当前响应推导的显示数据，无需重复 state。
+ */
 export default function Overview({ active, gateway }) {
   const [server, setServer] = useState(null),
     [error, setError] = useState('');
   const visible = useVisible();
+  // 总览只需轻量健康摘要，不必每 5 秒下载全部模拟节点；非激活/隐藏标签页时暂停。
   usePolling(
     async (signal) => {
       try {
@@ -31,18 +42,23 @@ export default function Overview({ active, gateway }) {
   if (!active) return null;
 
   const machines = gateway?.machines || [];
+  // observed 表示确实收到过状态；stale 表示数据已过期，不能把旧的正常值当作当前正常。
   const observed = !!gateway?.serverTime,
     stale = !!gateway?.stale;
   const online = machines.filter((machine) => machine.connected).length;
+  // connected 只统计协议连接，ready 还要求采集初始化完成，不能用 online 替代它。
   const ready = machines.filter((machine) => machine.ready).length;
   const kafka = gateway?.kafka || {};
   const probe = gateway?.kafkaConnection;
   const hasMachines = observed && machines.length > 0;
+  // 设备连接、采集就绪、Kafka 协议可响应分别判断，避免“连接成功”等价于“消息已送达”。
   const deviceGood = hasMachines && online === machines.length;
   const collectionGood = hasMachines && ready === machines.length;
   const kafkaGood = observed && probe?.state === 'connected';
   const serverGood = server?.state === 'running' && !error;
+  // 必须真的拿到两个服务的观测结果再判断整体正常；空数组 every 为 true，不能据此判健康。
   const checksComplete = !!server && observed && !stale && !error;
+  // 只有各阶段都正常且不存在未知投递批次时，才使用整体正常提示。
   const allHealthy =
     checksComplete &&
     serverGood &&
@@ -51,6 +67,7 @@ export default function Overview({ active, gateway }) {
     kafkaGood &&
     !kafka.unknownBatches;
   const attention = [
+    // 条件成立才产生对象，最后 filter(Boolean) 去掉 false/null，形成可直接 map 的数组。
     stale && {
       title: '网关状态暂不可用',
       text: '检查采集网关服务与网络连接，等待状态恢复。',
@@ -91,6 +108,7 @@ export default function Overview({ active, gateway }) {
       href: '#gateway/overview',
     },
   ].filter(Boolean);
+  // 将链路卡片描述为数据，再用同一段 JSX 渲染，比复制三套类似标记更易维护。
   const stages = [
     {
       icon: 'cpu',
@@ -121,6 +139,7 @@ export default function Overview({ active, gateway }) {
       badge: observed ? (kafkaGood ? '协议可响应' : '待确认') : '待检测',
     },
   ];
+  // 关注项、指标和链路均由当前 state/props 推导，不再各自保存一份 useState。
   return (
     <>
       <div className="page-heading">
@@ -161,6 +180,7 @@ export default function Overview({ active, gateway }) {
             : '。服务恢复后将自动更新。'}
         </Alert>
       )}
+      {/* 同一服务可能处于连接、就绪、投递三个不同阶段，指标明确区分含义。 */}
       <section className="metrics">
         <Metric
           icon="cpu"
@@ -205,6 +225,7 @@ export default function Overview({ active, gateway }) {
                   : '正在自动连接网关'}
               </span>
             </div>
+            {/* 图中的每个阶段都来自 stages 描述对象，不会在浏览器里执行采集或投递。 */}
             <ol className="pipeline" aria-label="采集数据链路">
               {stages.map((stage) => (
                 <li
@@ -248,6 +269,7 @@ export default function Overview({ active, gateway }) {
                 <Icon name="arrowRight" size={14} />
               </a>
             </div>
+            {/* 总览只预览前四个运行机组，完整列表通过上方“查看全部”进入网关页。 */}
             {machines.slice(0, 4).map((machine) => (
               <div className="overview-machine" key={machine.code}>
                 <div className="machine-heading">
@@ -338,6 +360,7 @@ export default function Overview({ active, gateway }) {
               </Badge>
             </div>
             <div className="attention-list">
+              {/* 没有关注项时还要区分“全部确认正常”和“尚在检测”，不能提前给出健康结论。 */}
               {attention.length ? (
                 attention.map((item) => (
                   <a

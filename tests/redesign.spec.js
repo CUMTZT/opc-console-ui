@@ -1,6 +1,11 @@
+/**
+ * 工作空间浏览器回归：系统总览链路状态、快捷入口和移动抽屉键盘行为。
+ * 页面是否可达、焦点是否可操作和状态是否准确都属于可验证的产品行为。
+ */
 import { test, expect } from '@playwright/test';
 import { mockAPIs, navigateTo } from './fixtures.js';
 
+// 系统总览：链路状态来自响应，快捷入口进入对应实际业务页。
 test('workspace overview shows live chain state and working shortcuts', async ({
   page,
 }) => {
@@ -25,6 +30,7 @@ test('workspace overview shows live chain state and working shortcuts', async ({
   ).toBeVisible();
 });
 
+// 抽屉键盘：打开、焦点移动、Escape 关闭与全部页面访问都可操作。
 test('mobile drawer supports keyboard dismissal and all workspace pages', async ({
   page,
 }) => {
@@ -73,6 +79,7 @@ test('mobile drawer supports keyboard dismissal and all workspace pages', async 
   }
 });
 
+// 失败展示：网关不可用时不显示整体健康，保留明确错误提示。
 test('overview reports unavailable gateway state without a healthy indicator', async ({
   page,
 }) => {

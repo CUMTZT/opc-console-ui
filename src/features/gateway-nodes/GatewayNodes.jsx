@@ -1,6 +1,17 @@
+/**
+ * 节点展示层：state 来自 useGatewayNodes，机组选择来自父组件 Gateway。
+ * 本组件不发网络请求，按钮只调用 Hook 提供的事件函数；便于把界面与业务流程分开读。
+ * 注意 s.page 是分页响应，和 Gateway 的 page（路由子页面名）含义不同。
+ */
 import { Alert, Badge, Field, Modal, time } from '../../shared.jsx';
 import Icon from '../../components/Icon.jsx';
 
+/**
+ * state：Hook 返回的状态/动作对象，下文简写 s；组件不复制它，以免 UI 与业务状态分离。
+ * machine/setMachine：父级当前机组与更新函数；machines：实际运行机组列表。
+ * readOnly：网关只读提示标志；真正的禁写条件还包含 s.canWrite 的新鲜度等检查。
+ * 子组件通过事件回调表达用户意图，网络时序与写入状态转换交给 Hook 统一处理。
+ */
 export default function GatewayNodes({
   state,
   machine,
@@ -9,12 +20,16 @@ export default function GatewayNodes({
   readOnly,
 }) {
   const s = state;
+  // 后端 quality 是整数状态码，最高两位决定 Good/Uncertain/Bad，不能直接当布尔值。
   const quality = (value) =>
     value >>> 30 === 0
       ? ['Good · 正常', 'good']
       : value >>> 30 === 1
         ? ['Uncertain · 不确定', 'warn']
         : ['Bad · 异常', 'bad'];
+  // 禁用控件是业务状态的可视化：只读、过期和待回读时都不能启动新的设备写入。
+  // unknown 分支只有“重新回读确认”，调用 verify 而不是 write，不会重复发送指令。
+  // 行 key 使用 node.code；操作记录只是本次浏览会话，浏览器刷新后会丢失。
   return (
     <>
       <section className="panel">
@@ -25,6 +40,7 @@ export default function GatewayNodes({
           </h2>
           <small>自动刷新订阅缓存 · 设备直读单独执行</small>
         </div>
+        {/* 工具栏区分缓存刷新、设备直读和目录重发现，三个按钮会执行不同后端行为。 */}
         <div className="toolbar">
           <select
             aria-label="选择机组"
@@ -81,6 +97,7 @@ export default function GatewayNodes({
             重新发现节点
           </button>
         </div>
+        {/* 上下文说明数据来源与新鲜度；设备值不变不代表通信没有发生。 */}
         <div className="node-context">
           <Alert>{s.error}</Alert>
           {readOnly && (
@@ -109,6 +126,7 @@ export default function GatewayNodes({
                     : `目录已更新：${s.scan.count} 个节点；${s.scan.state === 'ready' ? '新快照已确认' : '等待新快照确认'}`}
             </Alert>
           )}
+          {/* 弹窗关闭后依旧显示待确认目标，按钮只调用 GET 回读，不能重新提交那次写入。 */}
           {s.verification && !s.target && (
             <Alert>
               上一笔写入仍需回读确认：{s.verification.machine} /{' '}
@@ -142,6 +160,7 @@ export default function GatewayNodes({
               </tr>
             </thead>
             <tbody>
+              {/* 可选链允许首个响应尚未到达；质量码转成标签与十六进制文本供用户同时判断。 */}
               {s.page?.nodes.map((node) => {
                 const [label, kind] = quality(node.quality);
                 return (
@@ -214,6 +233,7 @@ export default function GatewayNodes({
           </div>
         </div>
       </section>
+      {/* 内存操作记录用于本会话排错；operationId/requestId 可关联后端日志，但不是完整审计库。 */}
       {s.operations.length > 0 && (
         <section className="panel">
           <div className="panel-heading">
@@ -258,6 +278,7 @@ export default function GatewayNodes({
           </div>
         </section>
       )}
+      {/* 弹窗内容固定使用 target 的机组和写前值，不会随表格轮询悄悄换掉用户确认的对象。 */}
       {s.target && (
         <Modal title="写入设备节点" busy={s.busy} onClose={s.closeWrite}>
           <form onSubmit={s.write}>
@@ -272,6 +293,7 @@ export default function GatewayNodes({
               <dt>写前值</dt>
               <dd>{s.target.value}</dd>
             </dl>
+            {/* 只允许 idle 编辑请求值；提交后锁住它，避免实际发送内容与展示内容不一致。 */}
             <Field label="写入值">
               <input
                 value={s.value}
@@ -300,6 +322,7 @@ export default function GatewayNodes({
               >
                 {s.phase === 'confirmed' ? '完成' : '取消'}
               </button>
+              {/* unknown 使用普通按钮执行 verify；其余分支 submit 也受 phase/canWrite 双重限制。 */}
               {s.phase === 'unknown' ? (
                 <button
                   type="button"

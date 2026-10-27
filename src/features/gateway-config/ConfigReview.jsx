@@ -1,7 +1,18 @@
+/**
+ * 配置审阅：比较“文件 → 草稿”和“运行态 → 文件”，展示影响计划及历史版本入口。
+ * 这里只计算和展示差异；载入/导出通过父级回调执行，避免审阅组件直接修改业务状态。
+ */
 import { Badge, time } from '../../shared.jsx';
 import Icon from '../../components/Icon.jsx';
 
+/**
+ * before/after：两份纯 JSON 配置；path：递归累积的点分路径，最外层默认为空字符串。
+ * 返回数组中的每一项代表叶子值变化，before/after 缺失时使用 undefined 表示增删。
+ * 这是差异描述，不负责把差异应用回配置，也不修改传入对象。
+ */
 export function changes(before, after, path = '') {
+  // 纯函数：同值返回空数组，对象递归到叶子，输出 {path, before, after} 列表。
+  // 数组按索引比较，所以这里表达字段差异，不推断“机组移动”等更高层业务含义。
   if (JSON.stringify(before) === JSON.stringify(after)) return [];
   if (
     before &&
@@ -9,6 +20,7 @@ export function changes(before, after, path = '') {
     typeof before === 'object' &&
     typeof after === 'object'
   ) {
+    // 合并双方键名并去重，确保新增和删除字段也能显示；flatMap 展开各层差异列表。
     return [
       ...new Set([...Object.keys(before), ...Object.keys(after)]),
     ].flatMap((key) =>
@@ -17,12 +29,19 @@ export function changes(before, after, path = '') {
   }
   return [{ path, before, after }];
 }
+/** 差异值文本格式化：undefined 显示占位符“—”，对象/数组序列化为 JSON，其余转为字符串。 */
 const display = (value) =>
+  // 缺失值显示占位符，对象用 JSON 展示；保持 React 普通文本输出，不解析成 HTML。
   value === undefined
     ? '—'
     : typeof value === 'object'
       ? JSON.stringify(value)
       : String(value);
+/**
+ * draft/baseline/running：草稿、文件基线、当前运行配置，比较方向有意分开。
+ * plan：后端对当前草稿的热应用评估；history：可载入的历史元信息，不是自动回滚指令。
+ * onLoad/onExport：父级执行的业务动作；busy/error：禁用历史载入和展示读取失败。
+ */
 export default function ConfigReview({
   draft,
   baseline,
@@ -34,8 +53,10 @@ export default function ConfigReview({
   busy,
   error,
 }) {
+  // baseline 是上次读取的文件配置；running 尚未返回时不凭空宣称文件已经应用。
   const draftChanges = changes(baseline, draft),
     unapplied = running ? changes(running, baseline) : [];
+  // 用原生 details 折叠次要信息；长差异只展示前 100 项，计数仍保留完整结果。
   return (
     <details className="panel config-review">
       <summary>
@@ -66,6 +87,7 @@ export default function ConfigReview({
           </p>
         )}
         {error && <p role="alert">{error}</p>}
+        {/* 展示草稿相对文件的修改，最多渲染一百项；摘要数量仍是完整差异总数。 */}
         {draftChanges.length > 0 && (
           <div className="table-scroll">
             <table>
@@ -89,6 +111,7 @@ export default function ConfigReview({
           </div>
         )}
         {!draftChanges.length && <p>当前草稿与文件内容一致。</p>}
+        {/* 已存文件也可能尚未应用，单独列出文件与运行态差异，不能与未保存修改混淆。 */}
         {unapplied.length > 0 && (
           <details>
             <summary>查看文件尚未应用的差异</summary>
@@ -119,6 +142,7 @@ export default function ConfigReview({
         </h3>
         <p>后端保留最近 20 次保存前的配置。日志设置由当前服务器保留。</p>
         <div className="actions">
+          {/* 点击历史项只载入草稿，需要用户校验并保存后才可能切换运行配置。 */}
           {history?.map((entry) => (
             <button
               type="button"

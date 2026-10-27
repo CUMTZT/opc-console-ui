@@ -1,5 +1,10 @@
+/**
+ * 网关诊断展示：把后端机组阶段码映射成中文，同时展示会话代次、队列和错误指标。
+ * connected 只代表连接建立，ready 还要求完成采集准备和快照确认，两者不可混用。
+ */
 import { Badge, time } from '../../shared.jsx';
 import Icon from '../../components/Icon.jsx';
+// 后端阶段码保持英文协议值；中文只用于界面展示，未知新阶段仍回退显示原值。
 const stages = {
   connecting: '正在连接',
   browsing: '发现节点',
@@ -10,7 +15,13 @@ const stages = {
   ready: '采集就绪',
   failed: '失败',
 };
+/**
+ * machines 是 Gateway 最近读取的运行状态数组；这里不复制、不修改，也不独立发请求。
+ * generation/sessionEpoch 用于识别目录与会话代次，便于解释重新发现/重连后的状态。
+ * 下面的 || 0/|| '无' 提供缺省显示，不代表服务器实际执行了计数器重置。
+ */
 export default function Diagnostics({ machines }) {
+  // 每个机组使用独立 details，无需额外 state 也能由浏览器提供键盘可用的展开行为。
   return (
     <section className="panel">
       <div className="panel-heading">
@@ -66,6 +77,7 @@ export default function Diagnostics({ machines }) {
               <dt>最近错误</dt>
               <dd>{machine.lastError || '无'}</dd>
             </dl>
+            {/* 建议按连接→就绪→容量告警的顺序给出；历史溢出计数不等于当前连接已断开。 */}
             <p>
               {!machine.connected
                 ? '检查 OPC UA 地址、网络和安全策略。'

@@ -1,14 +1,18 @@
 <!doctype html>
+<!-- 应用 HTML 宿主模板：定义字符集、响应式视口、主题色及 React 挂载根容器。 -->
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!-- 适配桌面与移动端设备宽度，配合 styles.css 媒体查询实现无横向溢出的响应式布局。 -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0d9488" />
     <title>OPC Studio · 工业仿真与数采工作台</title>
   </head>
   <body>
+    <!-- React 应用唯一挂载点，由 src/main.jsx 中的 createRoot 接管渲染。 -->
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <!-- ES Module 入口脚本：开发期由 Vite 即时转换 JSX，生产构建时替换为打包后的哈希资源。 -->
+    <script type="module" src="./src/main.jsx"></script>
     <noscript>请启用 JavaScript 以使用管理界面。</noscript>
   </body>
 </html>

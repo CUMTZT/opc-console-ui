@@ -1,6 +1,11 @@
+/**
+ * 异步边界回归：写后回读、未知结果不重发、缓存/直读、历史草稿与大目录。
+ * 延迟和失败由内存夹具注入，重点断言顺序、请求次数和草稿是否保留。
+ */
 import { test, expect } from '@playwright/test';
 import { mockAPIs, openGateway, node } from './fixtures.js';
 
+// 写后回读：POST 接受之后仍保持锁定，直到设备回读结束才能完成。
 test('successful write stays locked until direct device readback completes', async ({
   page,
 }) => {
@@ -25,6 +30,7 @@ test('successful write stays locked until direct device readback completes', asy
   ).toBeEnabled();
 });
 
+// 未知结果：允许再次 GET 回读，但累计写入 POST 次数不能因此增加。
 test('unknown write can be read again without resubmitting the command', async ({
   page,
 }) => {
@@ -46,6 +52,7 @@ test('unknown write can be read again without resubmitting the command', async (
   expect(state.valueReads).toBe(1);
 });
 
+// 读源分离：自动刷新只查缓存，用户明确点击设备直读才产生设备读取。
 test('automatic monitoring uses cache and explicit refresh alone reads the device', async ({
   page,
 }) => {
@@ -61,6 +68,7 @@ test('automatic monitoring uses cache and explicit refresh alone reads the devic
   await expect.poll(() => state.directReads).toBe(1);
 });
 
+// 重新发现：区分目录重建与新快照确认，检查最终显示的目录状态。
 test('rediscovery reports replacement catalog and acknowledged snapshot', async ({
   page,
 }) => {
@@ -73,6 +81,7 @@ test('rediscovery reports replacement catalog and acknowledged snapshot', async 
   await expect(page.getByText(/目录已更新：31 个节点/)).toBeVisible();
 });
 
+// 历史载入：只创建待编辑草稿，不立即改变运行配置。
 test('history restores only an editable draft and preserves the running configuration', async ({
   page,
 }) => {
@@ -92,6 +101,7 @@ test('history restores only an editable draft and preserves the running configur
   expect(state.saves).toHaveLength(1);
 });
 
+// 方案导入：完成结构与业务校验后载入草稿，明确保存之前不应用。
 test('simulation import validates a draft and does not apply it until saved', async ({
   page,
 }) => {
@@ -118,6 +128,7 @@ test('simulation import validates a draft and does not apply it until saved', as
   await expect.poll(() => state.simulation.config.tickMs).toBe(250);
 });
 
+// 大目录：只渲染当前页，编辑筛选结果不能误改其他节点参数。
 test('large node catalogs are paged and simulation updates preserve other profiles', async ({
   page,
 }) => {
@@ -147,12 +158,14 @@ test('large node catalogs are paged and simulation updates preserve other profil
   expect(state.simulation.config.nodes[0].baseline).toBe(10);
 });
 
+// 可读性：读取关键小文字与控件的实际样式，检查目标对比度。
 test('key small text and controls meet the target contrast', async ({
   page,
 }) => {
   await mockAPIs(page);
   await page.goto('/#server/monitor');
   await expect(page.getByText('出口温度', { exact: true })).toBeVisible();
+  // 在浏览器中计算文本颜色与最近非透明祖先背景色的 WCAG 相对亮度对比度（要求 >= 4.5）。
   const samples = await page
     .locator('th,.metric small,.badge.good,.button.primary:not(:disabled)')
     .evaluateAll((elements) => {
@@ -193,6 +206,7 @@ test('key small text and controls meet the target contrast', async ({
     expect(sample.ratio, sample.text).toBeGreaterThanOrEqual(4.5);
 });
 
+// 运行态独立：刷新规则轨迹时，已经修改但未保存的模拟参数保持不变。
 test('simulation runtime trace refresh does not replace an unsaved draft', async ({
   page,
 }) => {
@@ -246,6 +260,7 @@ test('simulation runtime trace refresh does not replace an unsaved draft', async
   expect(state.simulation.config.rules[0].name).toBe('运行规则');
 });
 
+// 响应归属：旧机组的待确认回读返回后，不能覆盖当前选中的另一机组。
 test('readback for an unresolved old machine never overwrites the selected machine', async ({
   page,
 }) => {

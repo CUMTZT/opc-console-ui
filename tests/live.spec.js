@@ -1,5 +1,10 @@
+/**
+ * 可选真实后端验收：只有显式 LIVE_APIS=1 才执行，普通 npm test 会跳过。
+ * 会创建并删除临时节点，必须使用隔离的 Go 服务与状态文件，日常学习无需开启。
+ */
 import { test, expect } from '@playwright/test';
 
+// 真实 API 可选验收：经代理管理临时节点，并在 finally 中清理。
 test('external React console works with real Go APIs through its proxy', async ({
   page,
 }) => {

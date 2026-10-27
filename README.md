@@ -7,6 +7,8 @@
 
 两个 Go 服务仅提供协议与 HTTP JSON API，不再包含 HTML、CSS、JavaScript 或前端构建依赖。
 
+正在学习 React，可从 [前端分析与 React 源码导读](docs/react-learning-guide.md) 开始：包含整体架构图、组件树、10 个页面的路由表、状态与请求流程，以及配套中文注释的推荐阅读顺序。
+
 ## 1.1.0 更新与联合启动
 
 本轮修复与测试见 [1.1.0 验证记录](docs/verification-1.1.0.md)。前端需要配套的 1.1.0 Go 服务：请重启旧后端使缓存、重新发现和回读等 API 生效。

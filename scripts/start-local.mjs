@@ -1,3 +1,8 @@
+/**
+ * Node.js 联合启动器：先检查本地文件、Go 二进制、配置及端口，再启动三个子进程。
+ * --check 只预检；实际启动保留网关文件中的设备/Kafka 地址，不会自行启动 Kafka。
+ * React 学习时可先读 src；本文件属于本地工程工具，不会进入浏览器构建产物。
+ */
 import { spawn, execFile } from 'node:child_process';
 import { access, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -7,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 const run = promisify(execFile);
+// 用脚本自身位置定位工程，避免从不同目录运行时相对路径失效。
 const ui = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workspace = resolve(ui, '..');
 const serverRoot =
@@ -17,6 +23,7 @@ const platform = { win32: 'windows', linux: 'linux', darwin: 'darwin' }[
   process.platform
 ];
 const arch = process.arch === 'x64' ? 'amd64' : process.arch;
+// Node 与 Go 的系统/架构命名不完全一致，组装与发行包目录一致的二进制路径。
 const suffix = process.platform === 'win32' ? '.exe' : '';
 const serverBinary =
   process.env.OPC_SERVER_BINARY ||
@@ -39,7 +46,7 @@ const serverPort = Number(process.env.OPC_SERVER_PORT || 4840);
 const serverHTTP = Number(process.env.OPC_SERVER_HTTP_PORT || 8080);
 const uiPort = Number(process.env.OPC_UI_PORT || 5173);
 
-// Only these listener settings are read here; the Go CLI validates the complete TOML.
+// 这里只摘取 HTTP 监听字段用于代理和端口检查，完整 TOML 的合法性由 Go CLI 验证。
 const text = await readFile(configPath, 'utf8');
 let section = '',
   gatewayHTTP = 1234,
@@ -54,9 +61,11 @@ for (const line of text.split(/\r?\n/)) {
   if (host) gatewayHost = host[1];
 }
 function urlHost(host) {
+  // IPv6 地址嵌入 URL 时必须带方括号。
   return host.includes(':') ? `[${host}]` : host;
 }
 const gatewayTargetHost =
+  // 0.0.0.0/:: 是监听全部网卡的地址；本机代理连接改用对应的回环地址。
   gatewayHost === '0.0.0.0'
     ? '127.0.0.1'
     : gatewayHost === '::'
@@ -88,6 +97,7 @@ await run(serverBinary, [
   `127.0.0.1:${serverHTTP}`,
 ]);
 await run(gatewayBinary, ['--check-config', '--config', configPath]);
+// 通过临时监听确认端口可用，结束就关闭；不会查杀占用端口的外部进程。
 for (const [port, host] of [
   [serverPort, '127.0.0.1'],
   [serverHTTP, '127.0.0.1'],
@@ -116,6 +126,7 @@ if (process.argv.includes('--check')) process.exit(0);
 const children = [];
 let stopping = false;
 function start(command, args, cwd, env = process.env) {
+  // 每个子进程使用自己工程目录，stdio=inherit 把输出直接交给当前终端。
   const child = spawn(command, args, { cwd, env, stdio: 'inherit' });
   children.push(child);
   child.on('error', (error) => {
@@ -127,6 +138,8 @@ function start(command, args, cwd, env = process.env) {
   });
 }
 function stop(code) {
+  // stopping 防止多个退出事件重复执行；先 SIGINT 给 Go 排空预算，再兜底强制退出。
+  // children 只收集本脚本启动的进程，不会扫描和结束无关服务。
   if (stopping) return;
   stopping = true;
   process.exitCode = code;
@@ -145,6 +158,7 @@ function stop(code) {
 process.on('SIGINT', () => stop(0));
 process.on('SIGTERM', () => stop(0));
 async function waitForPort(port, host = '127.0.0.1', timeoutMs = 5000) {
+  // 启动阶段短暂等待 TCP 可连接，降低网关过早连接的概率；这不是完整业务健康检查。
   const deadline = Date.now() + timeoutMs;
   while (!stopping && Date.now() < deadline) {
     const ready = await new Promise((resolve) => {
@@ -163,6 +177,7 @@ async function waitForPort(port, host = '127.0.0.1', timeoutMs = 5000) {
   }
 }
 
+// 模拟服务先启动，再启动网关和 Vite；上游 HTTP 地址通过环境变量只交给 Vite 代理。
 start(
   serverBinary,
   [

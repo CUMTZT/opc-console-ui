@@ -1,3 +1,9 @@
+/**
+ * 浏览器测试的内存后端：page.route 拦截 /api 请求，不连接 Go、OPC UA 设备或 Kafka。
+ * 夹具既提供正常响应，也按 options 模拟冲突、应用回滚、写入超时和回读失败。
+ * API 契约变化时需同步这里；它只能证明前端交互，不能替代真实协议集成测试。
+ */
+/** 构造模拟服务单节点测试数据：用字符串保存节点值，既模拟接口表示，也验证前端不会擅自损失小数精度。 */
 export const node = (id, name, type, value) => ({
   id,
   nodeId: `ns=1;i=${id}`,
@@ -10,6 +16,7 @@ export const node = (id, name, type, value) => ({
   sourceTimestamp: '2026-10-21T01:00:00Z',
   revision: 1,
 });
+/** 构造采集网关默认测试配置对象，与 GatewayConfiguration 接口契约保持一致。 */
 export const configuration = () => ({
   station_code: 'test-station',
   kafka_producer: {
@@ -51,12 +58,20 @@ export const configuration = () => ({
     ],
   },
 });
+/**
+ * 注册页面级 API 路由拦截器（拦截所有 /api/ 请求），返回可变内存状态对象 state。
+ * options 支持注入 nodeConflict、configConflict、rollback、readOnly、writeFailure、readbackDelay、readbackFailure 等异常场景。
+ */
 export async function mockAPIs(page, options = {}) {
+  // 每次调用创建独立 state；用例可检查 writes/saves 等计数，证明没有重复发送操作。
+  // Arrange（准备）：建立可变内存模型。Act（操作）由用例点击真实界面触发，
+  // Assert（断言）既检查可见 UI，也读取 state 计数，确认没有额外写入/保存等副作用。
   const state = {
     nodes: [
       node(1, '出口温度', 'FLOAT', '42.125'),
       node(2, '转速', 'LONG', '1234'),
       node(3, '开关', 'Bit', 'true'),
+      // 故意放入类似 HTML 的名称，验证 JSX 当文本显示而不是执行脚本。
       node(4, '<script>window.injected=true</script>', 'BYTE', '7'),
     ],
     config: configuration(),
@@ -76,6 +91,7 @@ export async function mockAPIs(page, options = {}) {
     valueReads: 0,
   };
   state.logs = Object.fromEntries(
+    // 两个服务各有一份不断可变的日志集合和独立进程 ID，供翻页/重启测试控制。
     ['server', 'gateway'].map((service) => [
       service,
       Array.from({ length: 125 }, (_, index) => ({
@@ -121,6 +137,7 @@ export async function mockAPIs(page, options = {}) {
     },
   };
   const view = () => ({
+    // 文件视图需要深复制；前端修改自己的草稿不能反向污染测试后端的原始配置。
     config: structuredClone(state.config),
     revision: state.revision,
     file: 'gateway.toml',
@@ -128,6 +145,7 @@ export async function mockAPIs(page, options = {}) {
     inSync: state.inSync,
   });
   await page.route('**/api/**', async (route) => {
+    // 读取请求方法、路径与 JSON body，然后在后续分支中模拟对应 HTTP 处理器。
     const req = route.request(),
       url = new URL(req.url()),
       method = req.method(),
@@ -152,6 +170,7 @@ export async function mockAPIs(page, options = {}) {
           ? 'gateway'
           : '';
     if (logService) {
+      // 日志筛选先固定 anchor，再过滤并倒序分页，模拟新增日志不移动旧页的约定。
       if (req.headers().authorization)
         return send({ error: 'unexpected authorization header' }, 400);
       const filters = Object.fromEntries(url.searchParams);
@@ -212,6 +231,7 @@ export async function mockAPIs(page, options = {}) {
       );
     }
     if (path.startsWith('/api/server')) {
+      // 模拟服务直接返回 JSON 对象；后面的网关分支则使用 {code, message, data}。
       if (path === '/api/server/health')
         return send({
           state: 'running',
@@ -302,10 +322,13 @@ export async function mockAPIs(page, options = {}) {
         : send({ code: 404, message: 'not found' }, 404);
     }
     if (path === '/api/gateway/config') {
+      // 文件、草稿、运行态在这里也区分；apply=false 只变文件，不变 runningConfig。
       if (method === 'PUT') {
         state.saves.push(body);
+        // 用 options 可重复地制造错误，不依赖网络偶发失败；409 不更新已存配置。
         if (options.configConflict)
           return send({ code: 409, message: 'configuration conflict' }, 409);
+        // 应用失败与“仅保存”区分：模拟返回 fileRestored，让 UI 说明回滚并保留草稿。
         if (options.rollback && body.apply)
           return send(
             {
@@ -371,6 +394,7 @@ export async function mockAPIs(page, options = {}) {
       return success({ generation: state.generation, code: body.machine });
     }
     if (path === '/api/gateway/nodes/value') {
+      // 单点回读可设置延迟/失败，验证写入已接受后界面仍需等待实际读回。
       state.valueReads++;
       if (options.readbackDelay)
         await new Promise((resolve) =>
@@ -391,6 +415,7 @@ export async function mockAPIs(page, options = {}) {
       });
     }
     if (path === '/api/gateway/nodes') {
+      // 分别记录缓存查询和设备直读；测试据此确认自动监控不会反复直读设备。
       if (url.searchParams.get('source') === 'cache') state.cachedReads++;
       else state.directReads++;
       const offset = Number(url.searchParams.get('offset')),
@@ -421,7 +446,9 @@ export async function mockAPIs(page, options = {}) {
       });
     }
     if (path === '/api/gateway/nodes/write') {
+      // 即使响应失败也记录一次写请求，用来断言 UI 没有在结果未知时自动重写。
       state.writes.push(body);
+      // 先记入 writes 再返回失败，模拟“请求已发出但结果未知”，不能据此认为未执行过。
       if (options.writeFailure)
         return send({ code: 504, message: 'device timeout' }, 504);
       state.values[body.code] = body.value;
@@ -440,15 +467,20 @@ export async function mockAPIs(page, options = {}) {
       state.runningConfig = structuredClone(state.config);
       return success({});
     }
+    // 不认识的接口明确失败，防止前端误拼路径时夹具仍返回看似成功的通用响应。
     return send({ code: 404, message: '未知接口' }, 404);
   });
   return state;
 }
+/** 打开采集网关指定子页面（默认 overview），通过真实 Hash 路由进入对应视图。 */
 export async function openGateway(page, path = 'overview') {
+  // 通过真实 Hash 地址进入页面，走与用户导航相同的 React 路由路径。
   await page.goto('/#gateway/' + path);
 }
 
+/** 跨视口导航辅助函数：自动适配桌面固定侧栏与移动端抽屉菜单，按可访问名称点击目标链接。 */
 export async function navigateTo(page, title, group) {
+  // 统一处理桌面侧栏和移动抽屉；按语义角色/可访问名称定位，减少对 CSS 结构的依赖。
   const toggle = page.getByRole('button', { name: '展开导航', exact: true });
   const mobile = await toggle.isVisible();
   if (

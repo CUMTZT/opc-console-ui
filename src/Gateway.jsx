@@ -1,3 +1,8 @@
+/**
+ * 网关业务容器：自动连接、状态采样、配置草稿、历史版本与配置操作都在这里协调。
+ * 节点读写逻辑委托给 useGatewayNodes，表单交给 Configuration，差异交给 ConfigReview。
+ * 这是“状态放在共同父组件，再通过 props 和回调共享”的实际例子。
+ */
 import ConfigReview from './features/gateway-config/ConfigReview.jsx';
 import Diagnostics from './features/gateway-status/Diagnostics.jsx';
 import GatewayNodes from './features/gateway-nodes/GatewayNodes.jsx';
@@ -19,13 +24,16 @@ import {
   useVisible,
 } from './shared.jsx';
 
+// 采集网关四个业务子页面的标题映射表。
 const titles = {
   overview: '运行总览',
   nodes: '节点监控',
   connections: '连接配置',
   settings: '网关设置',
 };
+/** 把热重载计划转换为可读说明；返回文本只描述计划，不代表重连已完成。 */
 function planText(plan) {
+  // 将后端热重载计划转成中文；filter(Boolean) 去掉没有发生的变更项。
   return (
     [
       plan?.kafkaChanged && '重建 Kafka 发布器',
@@ -42,8 +50,16 @@ function planText(plan) {
   );
 }
 
+/**
+ * samples：按时间顺序排列的 {at, ok, failed} 数组，由父级状态采样生成。
+ * max 至少为 2，避免所有增量为 0 时除以 0；两条线共用尺度，便于比较成功与失败。
+ * SVG 的 M 表示移动起点、L 表示连线，x 坐标随采样下标均匀分布。
+ */
 function DeliveryChart({ samples }) {
+  // 用原生 SVG 绘图：将最近采样映射到固定 viewBox；这里没有额外图表库。
+  // samples 是相邻两次计数之差，不是总量，也没有除以时间换算成每秒速率。
   const max = Math.max(2, ...samples.flatMap((p) => [p.ok, p.failed]));
+  // 原点在 SVG 左上角，所以值越大 y 越小；底边 152 与顶部留白共同构成可视范围。
   const path = (key) =>
     samples
       .map(
@@ -112,6 +128,15 @@ function DeliveryChart({ samples }) {
   );
 }
 
+/**
+ * active/page/navigate 由 App 提供；observe=true 表示总览仍需要网关摘要。
+ * onStatus 把成功或过期状态交回 App，供 Overview 显示，是子级向父级报告数据的回调。
+ * ready/connectionError：首次管理连接及能力检查结果；status/statusError：持续状态刷新结果。
+ * history：当前会话图表采样，不是配置历史；configHistory 才是后端保存的版本摘要。
+ * saving/result/fieldError：配置操作忙碌、结果提示和应聚焦的错误字段路径。
+ * pendingPlan：当前草稿最近一次校验计划；application：最近一次成功应用的记录。
+ * machine：当前节点页机组编码；session/lastCounters/form 分别是取消器、计数基线、表单引用。
+ */
 export default function Gateway({
   active,
   page,
@@ -119,6 +144,7 @@ export default function Gateway({
   observe = false,
   onStatus,
 }) {
+  // ready 表示管理接口已完成能力检查，不等于设备连接、采集就绪或 Kafka 投递成功。
   const [ready, setReady] = useState(false),
     [connectionError, setConnectionError] = useState('');
   const [status, setStatus] = useState(null),
@@ -128,6 +154,8 @@ export default function Gateway({
     [config, setConfig] = useState(null),
     [saving, setSaving] = useState(false),
     [result, setResult] = useState(null);
+  // view.config 是已读文件基线；config 是表单草稿；runningConfig 是实际运行配置。
+  // 三份数据分开才能表达“草稿未保存”和“文件已保存但尚未应用”两种不同状态。
   const [machine, setMachine] = useState('');
   const [fieldError, setFieldError] = useState('');
   const [runningConfig, setRunningConfig] = useState(null),
@@ -136,21 +164,27 @@ export default function Gateway({
     [pendingPlan, setPendingPlan] = useState(null),
     [application, setApplication] = useState(null);
   useEffect(() => {
+    // 草稿变化后，上一次校验的热应用计划已经过时，不能继续当作当前草稿的计划展示。
     setPendingPlan(null);
   }, [config]);
   const session = useRef(new AbortController()),
     lastCounters = useRef(null),
     form = useRef(null);
+  // dirty 只比较可序列化配置内容；view 是元数据包装，不应拿它整体和草稿比较。
   const visible = useVisible(),
     dirty = !!view && JSON.stringify(config) !== JSON.stringify(view.config);
+  // 机组列表以运行状态为准，而不是未应用的表单草稿；否则会对不存在的运行机组发操作。
   const machines = status?.machines || [],
     allowWrite = !!status && !status.readOnly && !statusError;
   useEffect(() => {
+    // 会话级取消信号覆盖 api 发起的请求；组件卸载时统一中止等待。
+    // 中止 HTTP 等待不代表设备端操作已经撤销，写入失败后仍需回读确认。
     const controller = new AbortController();
     session.current = controller;
     return () => controller.abort();
   }, []);
   useEffect(() => {
+    // 浏览器离开提醒保护草稿；内部 Hash 导航保留 Gateway 本身，因此无需重新载入。
     const listener = (event) => {
       if (dirty) {
         event.preventDefault();
@@ -160,7 +194,9 @@ export default function Gateway({
     window.addEventListener('beforeunload', listener);
     return () => window.removeEventListener('beforeunload', listener);
   }, [dirty]);
+  /** 采集网关专用请求封装：自动拼接 /api/gateway 前缀、合并会话取消信号并拆包 data 字段。 */
   async function api(path, options = {}) {
+    // 网关采用 {code, message, data} 包装，业务组件只取 data；模拟服务直接返回对象。
     const response = await request('/api/gateway' + path, {
       ...options,
       signal: AbortSignal.any([
@@ -170,6 +206,7 @@ export default function Gateway({
     });
     return response?.data;
   }
+  // 首次连接仅在 !ready 时读取配置，不把每五秒状态查询变成覆盖草稿的配置重载。
   const refreshConnection = usePolling(
     async (signal) => {
       try {
@@ -177,6 +214,7 @@ export default function Gateway({
           api('/config', { signal }),
           api('/capabilities', { signal }),
         ]);
+        // 先确认缓存与直接回读能力，再开放依赖这些能力的界面；失败后 5 秒再尝试。
         if (
           capabilities?.apiVersion !== '1' ||
           !capabilities?.directReadback ||
@@ -188,6 +226,7 @@ export default function Gateway({
         setView(configuration);
         setConfig(structuredClone(configuration.config));
         setConnectionError('');
+        // ready 置为 true 后此初始化轮询停止，后面的状态轮询开始工作。
         setReady(true);
       } catch (error) {
         if (!isCancelled(error)) {
@@ -201,24 +240,29 @@ export default function Gateway({
     5000,
     (active || observe) && visible && !ready,
   );
+  // 持续状态轮询：每 5 秒同步网关运行摘要、计算 Kafka 投递增量并维护默认选中机组。
   const refreshStatus = usePolling(
     async (signal) => {
       if (!ready) return;
       try {
         const data = await api('/status', { signal });
+        // 一次成功响应同时更新本页和父级摘要，两个区域不会使用两套独立轮询结果。
         setStatus(data);
         onStatus?.(data);
         setStatusError('');
         const counters = lastCounters.current;
+        // 从累计计数计算本次增量，只保留当前浏览会话最近 30 次采样，不写入后端。
         if (counters)
           setHistory((previous) =>
             [
               ...previous,
               {
                 at: Date.now(),
+                // 服务重启导致累计计数回落时，截断负增量，避免图表出现负投递量。
                 ok: Math.max(0, data.kafka.successfulBatches - counters.ok),
                 failed: Math.max(0, data.kafka.failedBatches - counters.failed),
               },
+              // 只保留末尾 30 项，避免长时间打开页面时采样数组无限增长。
             ].slice(-30),
           );
         lastCounters.current = {
@@ -226,6 +270,7 @@ export default function Gateway({
           failed: data.kafka.failedBatches,
         };
         setMachine((current) =>
+          // 保留仍存在的当前机组；机组被移除时才退回第一个可用机组。
           data.machines.some((m) => m.code === current)
             ? current
             : data.machines[0]?.code || '',
@@ -235,6 +280,7 @@ export default function Gateway({
           setStatusError(
             '状态刷新失败，当前显示最近一次成功读取的数据。' + errorText(e),
           );
+          // 保留最后一次状态并显式标记 stale，避免网络异常时旧正常值继续冒充实时正常。
           onStatus?.({ ...status, stale: true, error: errorText(e) });
         }
       }
@@ -243,6 +289,7 @@ export default function Gateway({
     (active || observe) && visible && ready,
     ready,
   );
+  // Hook 在 Gateway 的固定位置调用，即使节点子页面暂时没有渲染，其状态仍可保留。
   const nodeState = useGatewayNodes({
     api,
     enabled: ready,
@@ -252,8 +299,10 @@ export default function Gateway({
     refreshStatus,
   });
   useEffect(() => {
+    // 后端状态轮询驱动重新发现流程：目录替换后，还要等待新快照确认才算就绪。
     nodeState.updateScan(machines);
   }, [status]);
+  // 配置审阅轮询：仅在连接配置或网关设置子页每 5 秒刷新运行态配置与历史版本列表。
   const refreshReview = usePolling(
     async (signal) => {
       if (!ready) return;
@@ -262,6 +311,7 @@ export default function Gateway({
           api('/config/current', { signal }),
           api('/config/history', { signal }),
         ]);
+        // 这里只更新运行态和历史列表，绝不把定时读取的结果写进正在编辑的 config。
         setRunningConfig(running);
         setConfigHistory(history);
         setReviewError('');
@@ -273,7 +323,9 @@ export default function Gateway({
     active && visible && ready && ['connections', 'settings'].includes(page),
     ready,
   );
+  /** 载入指定历史版本配置为本地可编辑草稿，保留当前文件的 revision 以备后续保存。 */
   async function loadHistory(id) {
+    // 历史内容变成可编辑草稿；revision 仍取当前文件，历史版本不会立即替换运行连接。
     if (dirty && !window.confirm('载入历史版本会替换当前草稿，确认继续？'))
       return;
     setSaving(true);
@@ -294,7 +346,10 @@ export default function Gateway({
       setSaving(false);
     }
   }
+  /** 统一执行网关配置的重新读取（read）、重载文件（reload）、预校验（validate）、仅保存（save）与热应用（apply）。 */
   async function configurationAction(action) {
+    // 同一入口区分 read / reload / validate / save / apply，具体语义不能互相替代。
+    // 事件入口也检查 busy，而不只依赖按钮 disabled，避免同一操作在处理中重复启动。
     if (saving) return;
     if (action === 'read' || action === 'reload') {
       if (
@@ -305,19 +360,23 @@ export default function Gateway({
     }
     if (
       ['save', 'apply', 'validate'].includes(action) &&
+      // 原生约束校验会聚焦不合法控件；read/reload 不要求当前草稿先合法。
       !form.current?.reportValidity()
     )
       return;
     const submitted = structuredClone(config);
+    // 在提交副本上清理证书路径空行，不直接改动用户正在看的 React state。
     for (const key of ['trust_list_files', 'revocation_list_files'])
       submitted.opc.security[key] = submitted.opc.security[key]
         .map((value) => value.trim())
         .filter(Boolean);
+    // 一次配置动作建立独立的结果展示周期，清掉上次提示，不清掉用户草稿。
     setSaving(true);
     setResult(null);
     setFieldError('');
     try {
       if (action === 'validate') {
+        // 预校验只返回影响计划，不保存文件、不切换连接。
         const plan = await api('/config/validate', {
           method: 'POST',
           body: { config: submitted },
@@ -328,6 +387,7 @@ export default function Gateway({
           kind: 'success',
         });
       } else if (action === 'read' || action === 'reload') {
+        // read 只读取磁盘文件；reload 先让 Go 重载文件到运行态，再读取文件视图。
         let plan;
         if (action === 'reload')
           plan = await api('/config/reload', { method: 'POST' });
@@ -344,10 +404,12 @@ export default function Gateway({
         refreshStatus();
         refreshReview();
       } else {
+        // save/apply 都做 revision 检查，apply=true 额外要求后端切换运行配置。
         const data = await api('/config', {
           method: 'PUT',
           body: {
             config: submitted,
+            // 使用文件基线版本，不使用历史版本 ID；409 时仍保留这份提交草稿供用户比较。
             revision: view.revision,
             apply: action === 'apply',
           },
@@ -366,6 +428,8 @@ export default function Gateway({
         refreshReview();
       }
     } catch (e) {
+      // 后端字段路径映射到表单的 data-config-path，必要时导航到对应子页并聚焦。
+      // 优先采用结构化 data.field，旧格式才从错误文本提取；统一兼容 kafka 字段前缀。
       const field = (
         e.data?.field ||
         e.message?.match(
@@ -379,6 +443,7 @@ export default function Gateway({
           field === 'station_code' ||
           (field.startsWith('opc.') && !field.startsWith('opc.machines.'));
         navigate(settings ? 'gateway/settings' : 'gateway/connections');
+        // 导航后要等 React 更新出目标页面再查询 DOM；CSS.escape 避免路径被当作选择器语法。
         requestAnimationFrame(() =>
           document
             .querySelector(`[data-config-path="${CSS.escape(field)}"]`)
@@ -386,6 +451,7 @@ export default function Gateway({
         );
       }
       if (!isCancelled(e))
+        // 409 和应用回滚都只更新提示，不覆盖 config；用户可以保留草稿继续处理。
         setResult({
           kind: 'danger',
           text:
@@ -400,10 +466,13 @@ export default function Gateway({
       setSaving(false);
     }
   }
+  // 只让当前组件本次输出 null，不会让父组件卸载 Gateway，Hooks 的 state 仍然保留。
+  // 所有 Hook 都在这条提前返回之前调用，保证每次渲染时调用顺序一致。
   if (!active) return null;
   const k = status?.kafka || {},
     connection = status?.kafkaConnection || {},
     online = machines.filter((m) => m.connected).length;
+  // JSX 按 page 组合不同子页面；子组件通过 setConfig 等回调更新本容器拥有的状态。
   return (
     <>
       <div className="page-heading">
@@ -445,6 +514,7 @@ export default function Gateway({
         </div>
       </div>
       <Alert>{connectionError || statusError}</Alert>
+      {/* 应用请求成功与运行连接全部就绪是两件事，后者还需等待持续状态刷新确认。 */}
       {application && (
         <Alert kind={machines.every((m) => m.ready) ? 'success' : 'info'}>
           配置已应用；
@@ -453,6 +523,7 @@ export default function Gateway({
             : '正在等待连接及新快照确认，请查看运行诊断。'}
         </Alert>
       )}
+      {/* 运行总览仅使用 status/history；此处不会直接连接 OPC UA 或 Kafka。 */}
       {page === 'overview' && (
         <>
           <section className="metrics">
@@ -595,7 +666,9 @@ export default function Gateway({
           </section>
         </>
       )}
+      {/* 诊断与总览指标复用同一运行机组数组，避免独立请求产生前后口径不一致。 */}
       {page === 'overview' && <Diagnostics machines={machines} />}
+      {/* 节点界面可能随路由卸载，Hook 状态仍属于 Gateway，因此待回读操作不会随界面消失。 */}
       {page === 'nodes' && (
         <GatewayNodes
           state={nodeState}
@@ -605,6 +678,7 @@ export default function Gateway({
           readOnly={status?.readOnly}
         />
       )}
+      {/* 两个配置子页共用 config；先有文件视图再渲染表单，避免子组件读到 null 草稿。 */}
       {['connections', 'settings'].includes(page) && view && (
         <form
           ref={form}
@@ -622,6 +696,7 @@ export default function Gateway({
                 : '配置已同步'}{' '}
             · {view.file} · TOML
           </Alert>
+          {/* 把草稿与更新入口交给子组件，实际校验/保存接口仍集中在 Gateway。 */}
           <Configuration
             config={config}
             setConfig={setConfig}
@@ -629,6 +704,7 @@ export default function Gateway({
             disabled={saving}
             fieldError={fieldError}
           />
+          {/* 对照基线、草稿和运行态；定时审阅只更新旁边信息，不替换正在编辑的字段。 */}
           <ConfigReview
             draft={config}
             baseline={view.config}
@@ -647,6 +723,7 @@ export default function Gateway({
             busy={saving}
           />
           <Alert kind={result?.kind}>{result?.text}</Alert>
+          {/* 仅保存与保存并应用明确分开；后者是 form 的 submit 默认动作。 */}
           <div className="config-actions">
             <div className="actions">
               <button

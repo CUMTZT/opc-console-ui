@@ -1,12 +1,18 @@
+/**
+ * 日志浏览回归：独立筛选、分页锚点、重启、暂停刷新与移动布局。
+ * 用例直接操控夹具中的日志集合，模拟持续新增日志而无需运行真实服务。
+ */
 import { test, expect } from '@playwright/test';
 import { mockAPIs, navigateTo } from './fixtures.js';
 
+// 按服务类型定位日志表格区域，验证无障碍区域命名与表格内容归属。
 const region = (page, service) =>
   page.getByRole('region', {
     name: `${service === 'gateway' ? '采集网关' : '模拟服务'}日志数据表`,
     exact: true,
   });
 
+// 日志复用：两个服务分别查询和保留自己的筛选，不要求凭据。
 test('both services expose independent searchable logs without credentials', async ({
   page,
 }) => {
@@ -51,6 +57,7 @@ test('both services expose independent searchable logs without credentials', asy
   );
 });
 
+// 稳定翻页：新日志追加不移动历史窗口；进程重启后旧游标被正确放弃。
 test('history pagination stays anchored while new logs arrive and recovers after restart', async ({
   page,
 }) => {
@@ -98,6 +105,7 @@ test('history pagination stays anchored while new logs arrive and recovers after
   ).toBeVisible();
 });
 
+// 筛选边界：空结果、无效时间范围与后端错误恢复均有明确状态。
 test('filters support empty results, custom-time validation and error recovery', async ({
   page,
 }) => {
@@ -136,6 +144,7 @@ test('filters support empty results, custom-time validation and error recovery',
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
+// 日志小屏：过滤器和服务导航能在手机视口中正常使用。
 test('log filters and service navigation fit a mobile viewport', async ({
   page,
 }) => {
@@ -159,6 +168,7 @@ test('log filters and service navigation fit a mobile viewport', async ({
   ).toBe(true);
 });
 
+// 暂停策略：停止自动查询后，手动刷新仍能主动请求一次。
 test('pausing freezes automatic polling while manual refresh remains available', async ({
   page,
 }) => {

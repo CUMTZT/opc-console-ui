@@ -1,3 +1,7 @@
+/**
+ * 模拟规则响应式回归：多个视口下检查表单布局并实际编辑控件。
+ * 既检查几何尺寸，也验证控件能否输入，防止只看截图而漏掉操作问题。
+ */
 import { test, expect } from '@playwright/test';
 import { mockAPIs } from './fixtures.js';
 
@@ -30,7 +34,7 @@ for (const viewport of [
     const label = await rules
       .getByText('启用规则', { exact: true })
       .boundingBox();
-    // A full-width checkbox squeezed this label into a vertical column.
+    // 回归曾出现的布局问题：复选框误占整行，把旁边的标签挤成竖排。
     expect(Math.abs(checkbox.width - checkbox.height)).toBeLessThan(3);
     expect(label.height).toBeLessThanOrEqual(checkbox.height + 4);
     expect(label.width).toBeGreaterThan(label.height);

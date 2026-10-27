@@ -1,6 +1,11 @@
+/**
+ * 导航与状态保留回归：分组路由、旧书签和模拟草稿跨页面切换。
+ * 理解 App 中隐藏与卸载的区别时，可对照这组用例阅读。
+ */
 import { test, expect } from '@playwright/test';
 import { mockAPIs, navigateTo } from './fixtures.js';
 
+// 内部导航：模拟服务三个子页分离，但来回切换不会重新创建未保存配置草稿。
 test('grouped navigation separates simulator pages and preserves the configuration draft', async ({
   page,
 }) => {
@@ -73,6 +78,7 @@ test('grouped navigation separates simulator pages and preserves the configurati
   ).toHaveAttribute('aria-current', 'page');
 });
 
+// 地址兼容：完整子路由可直达，旧 #server 书签继续进入节点监控。
 test('simulator pages support direct links and the original server bookmark', async ({
   page,
 }) => {
@@ -97,6 +103,7 @@ test('simulator pages support direct links and the original server bookmark', as
   }
 });
 
+// 手机导航：分组侧栏可以打开和关闭，模拟服务各页均适配视口。
 test('grouped navigation and all simulator pages fit a mobile viewport', async ({
   page,
 }) => {

@@ -1,6 +1,11 @@
+/**
+ * 可选真实采集验收：只有显式 LIVE_COLLECTION=1 才执行，普通测试默认跳过。
+ * 会操作隔离设备节点并等待真实回读，需自行准备隔离 Go/Kafka 环境，不连接生产。
+ */
 import { test, expect } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
+// 真实采集可选验收：新增节点后重新发现、写入并回读，需显式隔离环境。
 test('browser discovers a new real node, writes it and confirms device readback', async ({
   page,
 }) => {

@@ -1,3 +1,8 @@
+/**
+ * 模拟服务容器：拥有节点快照、筛选分页及弹窗状态，按 page 展示总览/配置/监控。
+ * NodeEditor、DeleteNode 是本文件内的小组件；Simulation 负责更复杂的方案编辑。
+ * 后端快照与用户草稿分开保存，轮询读取只更新快照，不替换已经打开的编辑表单。
+ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Simulation from './Simulation.jsx';
 import ServerOverview from './features/server-overview/ServerOverview.jsx';
@@ -19,13 +24,16 @@ import {
   useVisible,
 } from './shared.jsx';
 
+// 模拟服务支持的四种 OPC UA 业务数据类型，用于类型筛选标签与节点编辑下拉框。
 const types = ['FLOAT', 'LONG', 'BYTE', 'Bit'];
+// OPC UA 状态码最高两位表示质量等级；>>> 是 JavaScript 的无符号右移运算。
 const quality = (node) =>
   node.statusCode >>> 30 === 0
     ? 'good'
     : node.statusCode >>> 30 === 1
       ? 'warn'
       : 'bad';
+// 各数据类型在节点新增/编辑表单中的输入格式与取值范围说明。
 const hints = {
   FLOAT: 'Double 数值；模拟关闭时支持 NaN、+Inf、-Inf',
   LONG: 'Int32 整数：-2147483648～2147483647',
@@ -33,21 +41,32 @@ const hints = {
   Bit: 'Boolean：true / false，或 1 / 0',
 };
 
+/**
+ * 节点编辑弹窗的输入契约：node=null 表示新增，否则包含节点 ID、值和 revision。
+ * persistent 仅展示保存方式；onSaved 通知父级刷新，onClose 通知父级卸载弹窗。
+ * onBusy 将提交忙碌状态向上汇报，父级据此暂停轮询与其他编辑按钮。
+ */
 function NodeEditor({ node, persistent, onClose, onSaved, onBusy }) {
+  // node 为空表示新增，否则以打开弹窗时的节点初始化本地草稿。
+  // value 保留字符串，避免浏览器提前转换而损失精度，也便于表达特殊浮点值。
   const [draft, setDraft] = useState({
     id: node?.id ?? '',
     name: node?.name ?? '',
     type: node?.type ?? 'FLOAT',
     value: node?.value ?? '0',
+    // 新节点必须有初始值；编辑现有节点默认只改元信息，勾选后才同时改当前值。
     write: !node,
   });
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   function field(key, value) {
+    // 对象展开复制旧字段，[key] 是动态属性名；返回新对象通知 React 状态已变化。
     setDraft((current) => ({ ...current, [key]: value }));
   }
+  // 改变类型时旧值可能已不适用，因此即便未主动勾选 write，也必须提交一个新类型的值。
   const needsValue = !node || draft.write || draft.type !== node.type;
   async function submit(event) {
+    // 表单默认会提交并刷新文档；在 React 中阻止它，改由异步 API 保存。
     event.preventDefault();
     if (busy) return;
     if (
@@ -63,9 +82,11 @@ function NodeEditor({ node, persistent, onClose, onSaved, onBusy }) {
     const body = {
       name: draft.name,
       type: draft.type,
+      // 不需要写当前值时连 value 字段也不发送，防止表单里的旧值覆盖正在运行的值。
       ...(needsValue ? { value: draft.value } : {}),
       ...(node ? { revision: node.revision } : { id: Number(draft.id) }),
     };
+    // 编辑必须携带打开时的 revision，后端才能拒绝基于过期数据的覆盖。
     try {
       const savedNode = await request(
         `/api/server/nodes${node ? '/' + node.id : ''}`,
@@ -74,6 +95,8 @@ function NodeEditor({ node, persistent, onClose, onSaved, onBusy }) {
           body,
         },
       );
+      // 位置参数依次是提示文本、保存结果、是否新增、目录元信息是否发生变化。
+      // 父级只有在目录变化时提示去网关重新发现；普通值变化无需重建目录。
       onSaved(
         node ? '节点已更新' : '节点已创建',
         savedNode,
@@ -82,6 +105,7 @@ function NodeEditor({ node, persistent, onClose, onSaved, onBusy }) {
       );
       onClose();
     } catch (e) {
+      // 冲突时只更新错误提示，不清空 draft，也不自动改用新 revision 再次保存。
       setError(
         errorText(e) +
           (e.status === 409
@@ -89,10 +113,13 @@ function NodeEditor({ node, persistent, onClose, onSaved, onBusy }) {
             : ''),
       );
     } finally {
+      // 成功和失败都解除忙碌状态；onBusy 把状态通知父组件，暂停节点自动刷新。
       setBusy(false);
       onBusy(false);
     }
   }
+  // value/checked + onChange 构成受控表单：输入内容始终由 draft 决定。
+  // type=button 的“取消”不会触发 submit，默认类型的保存按钮则会提交当前 form。
   return (
     <Modal title={node ? '编辑节点' : '新增节点'} onClose={onClose} busy={busy}>
       <form onSubmit={submit}>
@@ -169,7 +196,9 @@ function NodeEditor({ node, persistent, onClose, onSaved, onBusy }) {
   );
 }
 
+/** 删除确认只保存本弹窗的 busy/error；目标节点由父级决定，版本仍以打开时的快照为准。 */
 function DeleteNode({ node, onClose, onSaved, onBusy }) {
+  // 删除也使用 revision；确认时版本已变化就交给用户重新读取，避免删掉别人的修改。
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   async function remove() {
@@ -209,7 +238,17 @@ function DeleteNode({ node, onClose, onSaved, onBusy }) {
   );
 }
 
+/**
+ * props：active 表示当前是否属于本服务页面，page 是 overview/configuration/monitor，
+ * navigate 接收完整 Hash 路径，在总览快捷按钮中交给 App 执行导航。
+ * snapshot：最近一次成功的节点快照；读取失败只更新 error，仍可展示最后成功的数据。
+ * paused：仅控制监控页自动刷新；busy：请求提交/读取编辑数据期间的交互锁。
+ * search/type/qualityFilter/descending：纯 UI 查询条件，不会修改后端目录。
+ * detail：详情节点 ID；editor：undefined=关闭、null=新增、对象=编辑；deleting：待删节点。
+ * configurationVisited：配置编辑器是否曾挂载；notice：保存成功等非错误提示。
+ */
 export default function Server({ active, page, navigate }) {
+  // 第一组是服务数据和请求状态；第二组是查询条件；后续 state 控制详情/编辑/删除。
   const [snapshot, setSnapshot] = useState(null),
     [error, setError] = useState(''),
     [paused, setPaused] = useState(false),
@@ -225,25 +264,34 @@ export default function Server({ active, page, navigate }) {
       page === 'configuration',
     ),
     [notice, setNotice] = useState('');
+  // baseline 保存上一次成功快照；changed 是本会话发生过变化的 ID 集合，Set 自动去重。
+  // highlighted 是 ID→高亮结束时间的 Map，与变化累计数分开，显示高亮只持续约 2.4 秒。
   const baseline = useRef(null),
     changed = useRef(new Set()),
     highlighted = useRef(new Map());
+  // ref 存放跨请求的比较基线、累计变化节点及高亮截止时间，不单独触发 React 渲染。
   const visible = useVisible();
+  // now 更新时让高亮到期和服务运行时间重算；配置页不需要这份本地秒钟。
   const now = useClock(active && visible && page !== 'configuration');
   const [pageIndex, setPageIndex] = useState(0);
   useEffect(() => {
+    // 配置编辑器首次访问才挂载，以后仅隐藏；这样既延迟初始化，又保留未保存草稿。
     if (page === 'configuration') setConfigurationVisited(true);
   }, [page]);
   useEffect(() => {
+    // 查询条件变化时回到第一页，防止仍停留在旧查询的较大页码而看到空表。
     setPageIndex(0);
   }, [search, type, qualityFilter, descending]);
+  /** 拉取模拟服务全量节点快照，对比上次基线识别数值/质量变化并维护 2.4 秒闪烁高亮。 */
   async function read(signal) {
     try {
       const next = await request('/api/server/nodes', {
         signal,
         timeout: 8000,
       });
+      // 首次 baseline 为 null 也视作新实例；下面 previous 用空数组，不会访问 null.nodes。
       const restarted = baseline.current?.startedAt !== next.startedAt;
+      // 用启动时间区分服务实例；重启后不能把新实例和旧实例的值作为连续变化比较。
       if (restarted) {
         changed.current.clear();
         highlighted.current.clear();
@@ -254,17 +302,20 @@ export default function Server({ active, page, navigate }) {
           node,
         ]),
       );
+      // Map 按 ID 查找旧节点，避免对每个新节点再遍历一次整个旧数组。
       for (const node of next.nodes) {
         const old = previous.get(node.id);
         if (
           old &&
           (node.value !== old.value || node.statusCode !== old.statusCode)
         ) {
+          // 本轮至少发生值或质量变化才计入；集合中的旧 ID 不重复累计。
           changed.current.add(node.id);
           highlighted.current.set(node.id, Date.now() + 2400);
         }
       }
       baseline.current = next;
+      // ref 更新本身不重渲染，这次 setSnapshot 会让界面读到最新的变化统计。
       setSnapshot(next);
       setError('');
     } catch (e) {
@@ -274,6 +325,8 @@ export default function Server({ active, page, navigate }) {
         );
     }
   }
+  // 总览 5 秒、监控正常时 1 秒、失败后 5 秒；这些是请求完成后的等待时间。
+  // 离开服务、标签页隐藏、编辑忙碌或暂停监控时，enabled=false 会清理当前轮询。
   const refresh = usePolling(
     read,
     error || page === 'overview' ? 5000 : 1000,
@@ -285,6 +338,8 @@ export default function Server({ active, page, navigate }) {
   );
   const nodes = snapshot?.nodes || [],
     query = search.trim().toLowerCase();
+  // filtered 是已有状态推导的结果，不再放进 useState，避免维护两份可能不一致的数据。
+  // useMemo 仅缓存计算；filter 先生成新数组，所以后面的 sort 不会修改原始 nodes。
   const filtered = useMemo(
     () =>
       nodes
@@ -302,10 +357,12 @@ export default function Server({ active, page, navigate }) {
         .sort((a, b) => (descending ? b.id - a.id : a.id - b.id)),
     [nodes, query, type, qualityFilter, descending],
   );
+  // 数据减少可能让旧 pageIndex 越界；safePage 夹到有效范围，且空列表仍保留第一页。
   const safePage = Math.min(
     pageIndex,
     Math.max(0, Math.ceil(filtered.length / 100) - 1),
   );
+  // 模拟服务返回全量目录，前端再做筛选和每页 100 条展示；与网关的后端分页不同。
   const visibleNodes = filtered.slice(safePage * 100, safePage * 100 + 100);
   const good = nodes.filter((node) => quality(node) === 'good').length;
   const seconds = snapshot
@@ -314,9 +371,12 @@ export default function Server({ active, page, navigate }) {
         Math.floor((now - new Date(snapshot.startedAt).getTime()) / 1000),
       )
     : 0;
+  // 详情按 ID 查最新快照，显示值可继续更新；不会用详情快照反向替换编辑草稿。
   const currentDetail =
     detail === null ? null : nodes.find((node) => node.id === detail);
+  /** 节点或模拟方案保存成功后的统一回调：定位新建节点、提示网关重发现并立即刷新快照。 */
   function saved(message, node, created = false, catalogChanged = false) {
+    // 子组件通过回调上报保存结果；创建后用 NodeId 定位新节点，再主动同步服务快照。
     if (created && node) {
       setSearch(node.nodeId);
       setType('all');
@@ -329,7 +389,9 @@ export default function Server({ active, page, navigate }) {
     );
     refresh();
   }
+  /** 打开节点编辑弹窗：新增时直接打开空白表单，编辑时先拉取单节点最新数据与 revision。 */
   async function openEditor(node) {
+    // 编辑前单独读取最新节点及 revision；新增用 null，关闭用 undefined，区分三种状态。
     if (!node) {
       setEditor(null);
       return;
@@ -344,7 +406,9 @@ export default function Server({ active, page, navigate }) {
       setBusy(false);
     }
   }
+  /** 将当前筛选条件下的全部模拟节点导出为带 UTF-8 BOM 的 CSV 文件。 */
   function exportCSV() {
+    // 导出当前筛选的全部结果，而不是仅导出当前页；双引号转义是 CSV 格式要求。
     const cell = (value) =>
       '"' + String(value ?? '').replaceAll('"', '""') + '"';
     const rows = [
@@ -369,12 +433,15 @@ export default function Server({ active, page, navigate }) {
         node.sourceTimestamp,
       ]),
     ];
+    // UTF-8 BOM 帮助常见表格软件识别中文；每个字段加引号，字段中的引号用双引号转义。
     download(
       'opc-nodes.csv',
       '\ufeff' + rows.map((row) => row.map(cell).join(',')).join('\r\n'),
       'text/csv;charset=utf-8',
     );
   }
+  // 页面主体按 page 条件渲染；行 key 使用稳定 node.id，排序和翻页不会混淆节点身份。
+  // 详情只存 ID，再从最新快照查找，所以详情值可随轮询更新；编辑草稿则保持独立。
   return (
     <>
       <div className="page-heading">
@@ -429,6 +496,7 @@ export default function Server({ active, page, navigate }) {
           </div>
         )}
       </div>
+      {/* 非配置页的连接错误与配置编辑器自己的保存错误分别展示，避免不同操作的提示混在一起。 */}
       {page !== 'configuration' && <Alert>{error}</Alert>}
       {notice && (
         <Alert kind="success">
@@ -438,6 +506,7 @@ export default function Server({ active, page, navigate }) {
           </button>
         </Alert>
       )}
+      {/* 指标由同一份快照推导；不要为节点总数、正常数再维护额外 state。 */}
       {page !== 'configuration' && (
         <section
           className={`metrics ${page === 'monitor' ? 'compact-metrics' : ''}`}
@@ -477,9 +546,11 @@ export default function Server({ active, page, navigate }) {
           />
         </section>
       )}
+      {/* 总览组件只接收数据与导航回调，不再自行下载一份相同的节点目录。 */}
       {page === 'overview' && (
         <ServerOverview snapshot={snapshot} nodes={nodes} navigate={navigate} />
       )}
+      {/* 访问过一次以后保持编辑器实例；外层隐藏保留 draft，active 则停止无关运行态轮询。 */}
       {configurationVisited && (
         <div hidden={page !== 'configuration'}>
           <Simulation
@@ -488,6 +559,7 @@ export default function Server({ active, page, navigate }) {
           />
         </div>
       )}
+      {/* 监控工具栏只更新 UI 状态；筛选结果和分页范围会在下一次渲染时重新计算。 */}
       {page === 'monitor' && (
         <section className="panel">
           <div className="panel-heading">
@@ -575,6 +647,7 @@ export default function Server({ active, page, navigate }) {
                 </tr>
               </thead>
               <tbody>
+                {/* key 用稳定节点 ID；翻页序号仅用于显示，不用于识别节点身份。 */}
                 {visibleNodes.map((node, index) => (
                   <tr
                     key={node.id}
@@ -678,6 +751,7 @@ export default function Server({ active, page, navigate }) {
           </span>
         </footer>
       )}
+      {/* 用条件渲染挂载弹窗：条件变为 false 时 Modal 卸载并清理原生 dialog。 */}
       {active && page === 'monitor' && currentDetail && (
         <Modal title="节点详情" onClose={() => setDetail(null)}>
           <strong>{currentDetail.name}</strong>
@@ -729,6 +803,7 @@ export default function Server({ active, page, navigate }) {
           </dl>
         </Modal>
       )}
+      {/* 显式判断 undefined 才能让 null 的“新增模式”也渲染；不能写 editor && ...。 */}
       {active && page === 'monitor' && editor !== undefined && (
         <NodeEditor
           node={editor}
